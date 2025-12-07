@@ -27,8 +27,15 @@ const bool RELAY_ACTIVE_LEVEL   = LOW;   // LOW = relay energized
 const bool RELAY_INACTIVE_LEVEL = !RELAY_ACTIVE_LEVEL;
 
 // ================= WIFI + NTP CONFIG =================
-const char* WIFI_SSID = "YOUR_SSID";
-const char* WIFI_PASS = "YOUR_PASSWORD";
+String wifiSsid;
+String wifiPass;
+
+const unsigned long WIFI_CONNECT_TIMEOUT_MS = 20000; // 20s timeout
+const unsigned long WIFI_RETRY_INTERVAL_MS  = 30000; // retry every 30s when down
+unsigned long       lastWifiAttemptMs       = 0;
+bool                wifiApFallback          = false;
+bool                wifiAttemptInProgress   = false;
+unsigned long       wifiAttemptStartMs      = 0;
 
 const char* NTP_SERVER1 = "pool.ntp.org";
 const char* NTP_SERVER2 = "time.nist.gov";
@@ -45,6 +52,11 @@ U8G2_SSD1306_128X32_UNIVISION_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
 
 // ================= CONFIG STORAGE =================
 Preferences prefs;
+
+// Authentication
+bool   authEnabled  = false;
+String authUser     = "";
+String authPassword = "";
 
 // ---------- Defaults ----------
 const float         FAN_ON_TEMP_DEFAULT        = 28.0;
@@ -108,6 +120,7 @@ struct tm timeInfo;
 bool timeAvailable          = false;
 unsigned long lastTimeUpdateMs = 0;
 const unsigned long TIME_UPDATE_INTERVAL = 60000; // 60 s
+bool timezoneConfigured = false;
 
 // ================= HELPER: TIME & SCHEDULE =================
 void updateTime() {
@@ -210,6 +223,25 @@ void loadConfig() {
   l2OffMin = constrain(l2OffMin, 0, 24*60-1);
 }
 
+void loadWifiAndAuth() {
+  prefs.begin("gh_wifi", true);
+  wifiSsid       = prefs.getString("ssid", "");
+  wifiPass       = prefs.getString("pass", "");
+  authEnabled    = prefs.getBool("auth", false);
+  authUser       = prefs.getString("user", "");
+  authPassword   = prefs.getString("pwd",  "");
+  prefs.end();
+
+  if (wifiSsid.length() > 31) wifiSsid = wifiSsid.substring(0, 31);
+  if (wifiPass.length() > 63) wifiPass = wifiPass.substring(0, 63);
+  if (authUser.length() > 31) authUser = authUser.substring(0, 31);
+  if (authPassword.length() > 63) authPassword = authPassword.substring(0, 63);
+
+  if (authEnabled && (authUser.length() == 0 || authPassword.length() == 0)) {
+    authEnabled = false;
+  }
+}
+
 void saveConfig() {
   prefs.begin("gh_cfg", false); // read-write
   prefs.putFloat("fanOn",  fanOnTemp);
@@ -226,6 +258,154 @@ void saveConfig() {
   prefs.putInt("l2OnMin",  l2OnMin);
   prefs.putInt("l2OffMin", l2OffMin);
   prefs.end();
+}
+
+void saveWifiAndAuth() {
+  prefs.begin("gh_wifi", false);
+  prefs.putString("ssid", wifiSsid);
+  prefs.putString("pass", wifiPass);
+  prefs.putBool("auth", authEnabled);
+  prefs.putString("user", authUser);
+  prefs.putString("pwd",  authPassword);
+  prefs.end();
+}
+
+bool haveWifiCredentials() {
+  return wifiSsid.length() > 0;
+}
+
+bool requireAuth() {
+  if (!authEnabled) return true;
+  if (server.authenticate(authUser.c_str(), authPassword.c_str())) {
+    return true;
+  }
+  server.requestAuthentication();
+  return false;
+}
+
+void startAccessPoint() {
+  wifiApFallback = true;
+  WiFi.mode(WIFI_AP_STA);
+  String apName = "EZgrow-Setup";
+  WiFi.softAP(apName.c_str());
+  IPAddress ip = WiFi.softAPIP();
+  Serial.print("Started AP for setup: ");
+  Serial.println(ip);
+
+  u8g2.clearBuffer();
+  u8g2.setFont(u8g2_font_6x10_tf);
+  u8g2.setCursor(0, 10);
+  u8g2.print("WiFi setup AP");
+  u8g2.setCursor(0, 20);
+  u8g2.print(ip.toString().c_str());
+  u8g2.sendBuffer();
+}
+
+void completeWifiSuccess() {
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+
+  if (!timezoneConfigured) {
+    setenv("TZ", TZ_INFO, 1);
+    tzset();
+    configTime(0, 0, NTP_SERVER1, NTP_SERVER2);
+    timezoneConfigured = true;
+  }
+
+  u8g2.clearBuffer();
+  u8g2.setFont(u8g2_font_6x10_tf);
+  u8g2.setCursor(0, 10);
+  u8g2.print("WiFi OK");
+  u8g2.setCursor(0, 20);
+  u8g2.print(WiFi.localIP().toString().c_str());
+  u8g2.sendBuffer();
+  delay(500);
+}
+
+void handleWifiTimeout() {
+  Serial.println("WiFi connect timeout");
+  u8g2.clearBuffer();
+  u8g2.setFont(u8g2_font_6x10_tf);
+  u8g2.setCursor(0, 10);
+  u8g2.print("WiFi timeout");
+  u8g2.setCursor(0, 20);
+  u8g2.print("AP for config");
+  u8g2.sendBuffer();
+  startAccessPoint();
+}
+
+void attemptWifiConnect(bool waitForResult = true) {
+  if (!haveWifiCredentials()) return;
+
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(wifiSsid.c_str(), wifiPass.c_str());
+  Serial.print("Connecting to WiFi");
+
+  wifiAttemptInProgress = true;
+  wifiAttemptStartMs    = millis();
+
+  if (!waitForResult) return;
+
+  while (WiFi.status() != WL_CONNECTED && (millis() - wifiAttemptStartMs) < WIFI_CONNECT_TIMEOUT_MS) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println();
+  wifiAttemptInProgress = false;
+  lastWifiAttemptMs     = millis();
+
+  if (WiFi.status() == WL_CONNECTED) {
+    completeWifiSuccess();
+  } else {
+    handleWifiTimeout();
+  }
+}
+
+void ensureWifiConnected() {
+  if (WiFi.status() == WL_CONNECTED) {
+    wifiAttemptInProgress = false;
+    return;
+  }
+
+  if (wifiAttemptInProgress) {
+    if (WiFi.status() == WL_CONNECTED) {
+      wifiAttemptInProgress = false;
+      lastWifiAttemptMs     = millis();
+      completeWifiSuccess();
+      return;
+    }
+    unsigned long elapsed = millis() - wifiAttemptStartMs;
+    if (elapsed >= WIFI_CONNECT_TIMEOUT_MS) {
+      wifiAttemptInProgress = false;
+      lastWifiAttemptMs     = millis();
+      handleWifiTimeout();
+    }
+    return;
+  }
+
+  unsigned long now = millis();
+  if (now - lastWifiAttemptMs < WIFI_RETRY_INTERVAL_MS) return;
+  attemptWifiConnect(false);
+}
+
+void clearStoredWifi() {
+  prefs.begin("gh_wifi", false);
+  prefs.remove("ssid");
+  prefs.remove("pass");
+  prefs.end();
+  wifiSsid = "";
+  wifiPass = "";
+}
+
+void clearStoredAuth() {
+  prefs.begin("gh_wifi", false);
+  prefs.remove("auth");
+  prefs.remove("user");
+  prefs.remove("pwd");
+  prefs.end();
+  authEnabled  = false;
+  authUser     = "";
+  authPassword = "";
 }
 
 // ================= SENSORS =================
@@ -461,6 +641,7 @@ void handleRoot() {
 
 // ---- toggle relays (only if manual) ----
 void handleToggle() {
+  if (!requireAuth()) return;
   if (!server.hasArg("id")) {
     server.send(400, "text/plain", "Missing id");
     return;
@@ -484,6 +665,7 @@ void handleToggle() {
 
 // ---- change auto/manual mode ----
 void handleMode() {
+  if (!requireAuth()) return;
   if (!server.hasArg("id") || !server.hasArg("auto")) {
     server.send(400, "text/plain", "Missing args");
     return;
@@ -503,6 +685,17 @@ void handleMode() {
 
 // ---- configuration form (GET) ----
 void handleConfigGet() {
+  if (!requireAuth()) return;
+  if (server.hasArg("clear_wifi")) {
+    clearStoredWifi();
+    server.send(200, "text/plain", "WiFi credentials cleared. Reboot or enter new settings.");
+    return;
+  }
+  if (server.hasArg("clear_auth")) {
+    clearStoredAuth();
+    server.send(200, "text/plain", "Authentication disabled and credentials cleared.");
+    return;
+  }
   String page;
   page.reserve(5000);
 
@@ -519,6 +712,24 @@ void handleConfigGet() {
 
   page += "<h1>Configuration</h1>";
   page += "<p><a href='/'><button>Back</button></a></p>";
+
+  // Wi-Fi and security
+  page += "<div class='card'><h2>Wi-Fi</h2><form method='POST' action='/config'>";
+  page += "<label>SSID:<br><input type='text' name='wifiSsid' value='" + wifiSsid + "' maxlength='31'></label>";
+  page += "<label>Password:<br><input type='password' name='wifiPass' value='" + wifiPass + "' maxlength='63'></label>";
+
+  page += "<h3>Authentication</h3>";
+  page += "<label><input type='checkbox' name='authEnable' value='1'";
+  if (authEnabled) page += " checked";
+  page += "> Enable basic auth for controls</label>";
+  page += "<label>Username:<br><input type='text' name='authUser' value='" + authUser + "' maxlength='31'></label>";
+  page += "<label>Password:<br><input type='password' name='authPass' value='" + authPassword + "' maxlength='63'></label>";
+  page += "<p><small>Use the clear links below if you forget credentials.</small></p>";
+  page += "<button type='submit'>Save</button>";
+  page += "</form>";
+  page += "<p><a href='/config?clear_wifi=1'>Clear stored Wi-Fi</a><br>";
+  page += "<a href='/config?clear_auth=1'>Clear authentication</a></p>";
+  page += "</div>";
 
   // Fan & pump thresholds
   page += "<div class='card'><h2>Environment thresholds</h2>";
@@ -577,6 +788,41 @@ void handleConfigGet() {
 
 // ---- configuration form (POST) ----
 void handleConfigPost() {
+  if (!requireAuth()) return;
+  // Wi-Fi credentials
+  if (server.hasArg("wifiSsid")) {
+    String s = server.arg("wifiSsid");
+    s.trim();
+    if (s.length() <= 31) {
+      wifiSsid = s;
+    }
+  }
+  if (server.hasArg("wifiPass")) {
+    String p = server.arg("wifiPass");
+    if (p.length() <= 63) {
+      wifiPass = p;
+    }
+  }
+
+  // Auth settings
+  bool requestedAuth = server.hasArg("authEnable");
+  String user = server.arg("authUser");
+  String pwd  = server.arg("authPass");
+  user.trim();
+  if (user.length() > 31) user = user.substring(0, 31);
+  if (pwd.length() > 63)  pwd  = pwd.substring(0, 63);
+
+  if (requestedAuth) {
+    if (user.length() < 3 || pwd.length() < 6) {
+      server.send(400, "text/plain", "Auth requires username (>=3 chars) and password (>=6 chars).");
+      return;
+    }
+    authEnabled  = true;
+    authUser     = user;
+    authPassword = pwd;
+  } else {
+    authEnabled = false;
+  }
   // Thresholds
   if (server.hasArg("fanOn")) {
     float v = server.arg("fanOn").toFloat();
@@ -641,6 +887,13 @@ void handleConfigPost() {
   }
 
   saveConfig();
+  saveWifiAndAuth();
+
+  if (haveWifiCredentials()) {
+    attemptWifiConnect();
+  } else if (!wifiApFallback) {
+    startAccessPoint();
+  }
 
   server.sendHeader("Location", "/config", true);
   server.send(302, "text/plain", "");
@@ -653,6 +906,7 @@ void setup() {
 
   // Load config from NVS
   loadConfig();
+  loadWifiAndAuth();
 
   // GPIO init
   pinMode(RELAY_LIGHT1, OUTPUT);
@@ -681,22 +935,20 @@ void setup() {
   u8g2.drawStr(0, 10, "Greenhouse boot...");
   u8g2.sendBuffer();
 
-  // Wi-Fi (station mode)
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
-  Serial.print("Connecting to WiFi");
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
+  // Wi-Fi
+  if (haveWifiCredentials()) {
+    attemptWifiConnect();
   }
-  Serial.println();
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
+  if (WiFi.status() != WL_CONNECTED) {
+    startAccessPoint();
+  }
 
   // NTP / timezone
-  setenv("TZ", TZ_INFO, 1);
-  tzset();
-  configTime(0, 0, NTP_SERVER1, NTP_SERVER2);
+  if (WiFi.status() == WL_CONNECTED) {
+    setenv("TZ", TZ_INFO, 1);
+    tzset();
+    configTime(0, 0, NTP_SERVER1, NTP_SERVER2);
+  }
 
   // Web server routes
   server.on("/",        HTTP_GET,  handleRoot);
@@ -706,17 +958,19 @@ void setup() {
   server.on("/config",  HTTP_POST, handleConfigPost);
   server.begin();
 
-  // Show IP on display briefly
-  u8g2.clearBuffer();
-  u8g2.setCursor(0, 10);
-  u8g2.print("IP:");
-  u8g2.setCursor(0, 20);
-  u8g2.print(WiFi.localIP().toString().c_str());
-  u8g2.sendBuffer();
-  delay(2000);
+  if (WiFi.status() == WL_CONNECTED) {
+    u8g2.clearBuffer();
+    u8g2.setCursor(0, 10);
+    u8g2.print("IP:");
+    u8g2.setCursor(0, 20);
+    u8g2.print(WiFi.localIP().toString().c_str());
+    u8g2.sendBuffer();
+    delay(2000);
+  }
 }
 
 void loop() {
+  ensureWifiConnected();
   server.handleClient();
   updateTime();
   updateSensors();

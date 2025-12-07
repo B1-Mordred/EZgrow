@@ -154,16 +154,12 @@ And ensure you have the **ESP32 board support** installed (e.g. via Espressif’
 - **Flash size**, **Partition scheme**, **Upload speed**: typical ESP32 defaults are fine.
 - **Port**: the COM port corresponding to your board.
 
-### 4.4 Wi-Fi Credentials
+### 4.4 Wi-Fi Credentials & First Boot
 
-In `controller.ino`, set:
-
-```cpp
-const char* WIFI_SSID = "YOUR_SSID";
-const char* WIFI_PASS = "YOUR_PASSWORD";
-```
-
-Then compile and upload.
+- Wi-Fi SSID/password are **stored in NVS (Preferences)** and edited through the `/config` page.
+- On first boot (or after clearing credentials) the ESP32 starts a **setup access point** named `EZgrow-Setup` so you can open
+  `http://192.168.4.1/config` and enter Wi-Fi details.
+- After valid credentials are saved, the device switches back to station mode and connects automatically.
 
 ---
 
@@ -171,11 +167,9 @@ Then compile and upload.
 
 ### 5.1 Web UI
 
-After boot:
-
-1. ESP32 connects to your Wi-Fi network.
-2. The serial console prints the assigned IP address.
-3. The IP address is also briefly displayed on the OLED.
+At boot the controller tries to join the stored Wi-Fi network for up to ~20 seconds. If it fails or no credentials are present,
+it keeps relays off, shows an error on Serial/OLED, and starts the `EZgrow-Setup` access point so you can still reach the web
+UI. Successful connections print and briefly display the IP address.
 
 Open a browser and navigate to:
 
@@ -217,6 +211,11 @@ http://<esp32-ip-address>/config
 
 Configurable parameters:
 
+- **Wi-Fi**:
+  - SSID and password (stored securely in NVS)
+- **Web authentication** (optional basic auth):
+  - Enable/disable protection for state-changing routes
+  - Username (>=3 chars) and password (>=6 chars)
 - **Fan control**:
   - Fan ON temperature (°C)
   - Fan OFF temperature (°C)
@@ -232,6 +231,9 @@ Configurable parameters:
   - Light 1 OFF time
   - “Use schedule for Light 2”
   - Light 2 ON/OFF times
+- **Credential reset links**:
+  - Clear stored Wi-Fi credentials
+  - Clear authentication credentials (if you forget them)
 
 When you press **“Save”**:
 
@@ -337,13 +339,10 @@ Choose `fanOnTemp` and `fanOffTemp` appropriate for your plants and environment,
 
 ## 8. Security Considerations
 
-- The built-in web server uses **plain HTTP**, no authentication or HTTPS.
-- For a typical small standalone greenhouse network this may be acceptable, but:
-  - Avoid exposing it directly to the public internet.
-  - If needed, add:
-    - HTTP Basic Auth
-    - Firewall rules / VLAN isolation
-    - Reverse proxy with TLS in front of the ESP32
+- The web UI supports **optional HTTP Basic Auth** (configure username/password on `/config`). When enabled, all state-changing
+  endpoints (`/toggle`, `/mode`, `/config`) are protected.
+- Transport is still **plain HTTP**; avoid exposing the ESP32 directly to the internet and prefer isolated LAN/VLAN or a
+  TLS-terminating reverse proxy.
 
 ---
 
@@ -381,6 +380,11 @@ Choose `fanOnTemp` and `fanOffTemp` appropriate for your plants and environment,
    - Check the IP on serial monitor and OLED.
    - Ensure your computer is on the same network.
    - Confirm no firewall is blocking access.
+   - If Wi-Fi credentials are wrong, join the `EZgrow-Setup` AP, open `/config`, and update them.
+
+6. **Forgot Wi-Fi or auth credentials**
+   - Browse to `/config?clear_wifi=1` to erase saved SSID/password (device will drop back to AP setup mode).
+   - Browse to `/config?clear_auth=1` to disable authentication.
 
 ---
 
@@ -388,7 +392,7 @@ Choose `fanOnTemp` and `fanOffTemp` appropriate for your plants and environment,
 
 - Add **JSON API** (`/api/status`) for integration with Home Assistant or other systems.
 - Add **MQTT** publish/subscribe for remote monitoring and control.
-- Implement **authentication** and optional HTTPS (via a TLS-terminating proxy).
+- Add optional HTTPS via a TLS-terminating proxy.
 - Log sensor data to an SD card or remote database.
 - Add additional sensors (CO₂, light intensity, etc.) on the same I²C bus.
 

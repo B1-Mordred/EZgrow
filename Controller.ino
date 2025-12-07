@@ -1,0 +1,20 @@
+#include <Arduino.h>
+#include "Greenhouse.h"
+#include "WebUI.h"
+
+void setup() {
+  Serial.begin(115200);
+  delay(500);
+
+  initHardware();   // pins, LittleFS, config, WiFi, time, sensors, display
+  initWebServer();  // HTTP server + routes (incl. offline Chart.js)
+}
+
+void loop() {
+  handleWebServer();
+  updateTime();
+  updateSensors();
+  updateControlLogic();
+  updateDisplay();
+  logHistorySample();
+}

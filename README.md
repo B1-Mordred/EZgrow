@@ -1,12 +1,106 @@
-# EZgrow
-# ESP32 Greenhouse Controller (ESP32-4R-A2)
+# ESP32 Greenhouse Controller (ESP32-4R-A2, Multi-file, LittleFS)
 
-`controller.ino` implements a small greenhouse controller based on the **ESP32-4R-A2** relay board.  
-It controls two lights, a 12 V fan, and a 12 V pump; reads temperature/humidity, soil moisture, and exposes a web UI for monitoring and configuration.
+This project implements a greenhouse controller based on the **ESP32-4R-A2** relay board.
+
+It controls:
+
+- 2 lights  
+- 1 fan (12 V)  
+- 1 pump (12 V)
+
+It reads:
+
+- Temperature + humidity from an **SHT40** (I²C)  
+- Soil moisture from **2× HD38** analog sensors  
+
+It displays status on a small **0.91" WE-DA-361 I²C OLED** and exposes a web UI (via Wi-Fi) with:
+
+- Dashboard (live sensors, relay states, modes)  
+- Configuration (thresholds, timings, light schedules)  
+- History charts (temperature, humidity, light states)  
+
+All charts work **offline**, using **LittleFS** to serve Chart.js from the ESP32.
 
 ---
 
-## 1. Features
+## Quick Start
+
+1. **Clone or create the project folder**
+
+   ```text
+   controller/
+     controller.ino
+     Greenhouse.h
+     Greenhouse.cpp
+     WebUI.h
+     WebUI.cpp
+
+     data/
+       chart.umd.min.js
+   ```
+
+2. **Install Arduino support**
+
+   - Install the **ESP32** board package via the Boards Manager (Espressif Systems).
+   - In the Arduino IDE, select:
+     - Board: `ESP32 Dev Module` (or the closest ESP32-4R-A2 equivalent)
+     - Correct COM port.
+
+3. **Install required libraries (Library Manager)**
+
+   - `Adafruit SHT4X`
+   - `Adafruit Unified Sensor`
+   - `U8g2`
+
+4. **Download Chart.js and place it in `data/`**
+
+   - Download a recent **Chart.js 4 UMD build** (e.g. from JSDelivr).
+   - Save it as:
+
+     ```text
+     controller/data/chart.umd.min.js
+     ```
+
+5. **Configure Wi-Fi credentials**
+
+   - Open `Greenhouse.cpp`.
+   - Locate:
+
+     ```cpp
+     static const char* WIFI_SSID = "YOUR_SSID";
+     static const char* WIFI_PASS = "YOUR_PASSWORD";
+     ```
+
+   - Replace with your actual Wi-Fi SSID and password.
+
+6. **Upload LittleFS data**
+
+   - Install the **ESP32 LittleFS Data Upload** plugin for Arduino IDE (if not already installed).
+   - In Arduino IDE, select the `controller` sketch.
+   - Use the **“ESP32 LittleFS Data Upload”** menu to upload the `data/` folder to the ESP32.
+
+7. **Compile and upload the firmware**
+
+   - Click **Verify** to compile.
+   - Click **Upload** to flash the ESP32-4R-A2.
+
+8. **Connect to the web UI**
+
+   - Open the Serial Monitor at **115200 baud**.
+   - After boot, note the IP address printed (and briefly shown on the OLED).
+   - On a device in the same network, open a browser and navigate to:
+
+     ```text
+     http://<esp32-ip-address>/
+     ```
+
+   - Use:
+     - `/` for the dashboard and charts.
+     - `/config` to adjust thresholds, timings, and schedules.
+
+---
+
+## 1. Features Overview
 
 ### Hardware
 
@@ -18,56 +112,95 @@ It controls two lights, a 12 V fan, and a 12 V pump; reads temperature/humidity,
   - 12 V pump (Relay 4)
 - **Sensors**:
   - 1× SHT40 (I²C) – temperature and humidity
-  - 2× HD38 soil moisture sensors (analog)
+  - 2× HD38 soil moisture sensors (analog output, powered at 3.3 V)
 - **Display**:
-  - WE-DA-361 – 0.91" 128×32 I²C OLED
+  - WE-DA-361 – 0.91" 128×32 I²C OLED (SSD1306 compatible)
 
-### Software / Control Logic
+### Control Logic
 
-- Wi-Fi **station** mode with browser-based UI:
-  - Status dashboard at `/`
-  - Configuration page at `/config`
-- **Automatic control**:
-  - Fan: temperature-based, with configurable ON/OFF thresholds (hysteresis)
-  - Pump: soil moisture-based, with configurable dry/wet thresholds and ON/OFF timing
-  - Lights: optional daily schedules (ON/OFF times, per light) with AUTO/MANUAL modes
-- **Manual control**:
-  - Web buttons to toggle each relay when in MANUAL mode
-- **Configuration stored in flash (NVS)**, no recompile required for:
-  - Fan ON temperature (°C)
-  - Fan OFF temperature (°C)
-  - Soil dry / wet thresholds (%)
-  - Pump minimum OFF time (s)
-  - Pump maximum ON time (s)
-  - Light 1/2 ON/OFF times and “use schedule” flags
-  - AUTO/MAN modes for lights, fan, pump
-- **Display content** (WE-DA-361):
-  - Line 1: Temperature + humidity
-  - Line 2: Soil moisture 1 and 2 (%)
-  - Line 3: Relay states and modes (L1, L2, F, P with 1/0 and A/M flags)
-- Time synchronisation via **NTP** with basic time zone for CET/CEST (Europe/Berlin style)
+- **Fan control** (automatic):
+  - Temperature-based control with configurable ON/OFF thresholds (hysteresis).
+- **Pump control** (automatic):
+  - Soil moisture-based control using 2 sensors and configurable:
+    - Dry/wet thresholds.
+    - Minimum OFF time.
+    - Maximum ON time.
+- **Lights**:
+  - Each light can run:
+    - In **AUTO** mode using daily schedules (ON/OFF times).
+    - In **MANUAL** mode with direct toggling via web UI.
+  - Schedules allow intervals that cross midnight (e.g. 20:00–06:00).
+
+### Web Interface
+
+- **Dashboard (`/`)**:
+  - Current time (from NTP).
+  - Temperature (°C), humidity (%).
+  - Soil moisture 1/2 (%).
+  - States and modes of Light 1, Light 2, Fan, Pump (ON/OFF + AUTO/MAN).
+  - Light schedule summary.
+  - History charts:
+    - Temperature and humidity (line chart).
+    - Light 1 and Light 2 states (step chart).
+- **Configuration (`/config`)**:
+  - Fan ON temperature (°C).
+  - Fan OFF temperature (°C).
+  - Soil DRY/WET thresholds (%).
+  - Pump minimum OFF time (s).
+  - Pump maximum ON time (s).
+  - Light 1/2 schedules (ON/OFF time + “use schedule” flags).
+  - AUTO/MANUAL for fan and pump.
+- **History API (`/api/history`)**:
+  - JSON feed of the last 24 hours (1 point per minute) with:
+    - Timestamp.
+    - Temperature.
+    - Humidity.
+    - Light 1/2 states.
+- **Static asset from LittleFS**:
+  - `/chart.umd.min.js` – Chart.js UMD bundle served from LittleFS for offline charts.
+
+### Data Logging
+
+- In-memory **ring buffer** for history:
+  - **1440 samples** (1 day at 1-minute interval).
+  - Each sample contains time, temperature, humidity, Light 1, Light 2.
+- Periodic logging every 1 minute.
+
+### Configuration Persistence
+
+- All settings stored in **NVS** via `Preferences`:
+  - Fan thresholds.
+  - Soil thresholds.
+  - Pump timings.
+  - Light 1/2 schedules and enabled flags.
+  - Fan and pump AUTO/MAN flags.
+- Settings are reloaded at boot; no recompile needed to adjust behaviour.
 
 ---
 
-## 2. Hardware Requirements
+## 2. Project Structure
 
-- ESP32-4R-A2 relay board (LC-Relay-ESP32-4R-A2 or equivalent)
-- 12 V power supply for:
-  - 2 × lights
-  - 1 × fan (12 V)
-  - 1 × pump (12 V)
-- 1 × SHT40 temperature/humidity sensor (I²C, 3.3 V)
-- 2 × HD38 soil moisture sensors (analog output, powered at 3.3 V)
-- 1 × WE-DA-361 0.91" OLED (128×32, I²C, 3.3 V)
-- Wiring, connectors, and common ground between 12 V power and the ESP32 board
+```text
+controller/
+  controller.ino        # Main entry point (setup/loop)
+  Greenhouse.h          # Config/state structs, function declarations
+  Greenhouse.cpp        # Hardware init, sensors, control logic, history
+  WebUI.h               # Web server API declarations
+  WebUI.cpp             # HTTP routes, HTML, config UI, charts
+
+  data/
+    chart.umd.min.js    # Chart.js UMD bundle (served via LittleFS)
+```
+
+> The `data/` directory is uploaded to the ESP32’s LittleFS partition using the **ESP32 LittleFS Data Upload** tool.
 
 ---
 
-## 3. Pinout and Wiring
+## 3. Hardware Wiring
 
 ### 3.1 Relays → Loads
 
-Relays are already wired on the ESP32-4R-A2 board to the following GPIOs:
+The ESP32-4R-A2 board maps its relays to the following GPIOs:
 
 | Function | Relay | ESP32 GPIO |
 |----------|--------|-----------|
@@ -76,19 +209,23 @@ Relays are already wired on the ESP32-4R-A2 board to the following GPIOs:
 | Fan      | RLY3   | 32        |
 | Pump     | RLY4   | 33        |
 
-Typical wiring for each load (light/fan/pump):
+Typical wiring:
 
 - 12 V+ → relay **COM**
-- Relay **NO** → load +
+- Relay **NO** → load + (light/fan/pump +)
 - Load − → 12 V GND
 - 12 V GND → ESP32 GND (common ground)
 
-> The relays are treated as **active LOW** in the code:  
-> `LOW` = ON, `HIGH` = OFF (adjustable via `RELAY_ACTIVE_LEVEL` if needed).
+Relays are configured as **active LOW** in the code:
 
-### 3.2 I²C Bus (SHT40 + WE-DA-361 OLED)
+- `LOW` = relay ON (energized).
+- `HIGH` = relay OFF.
 
-Use the ESP32’s I²C hardware pins:
+If your board uses active HIGH relays, you can invert `RELAY_ACTIVE_LEVEL` in `Greenhouse.cpp`.
+
+### 3.2 I²C Bus: SHT40 + WE-DA-361 OLED
+
+The SHT40 and OLED share the ESP32 I²C bus:
 
 | Signal | ESP32 pin | Connected devices          |
 |--------|-----------|----------------------------|
@@ -97,308 +234,225 @@ Use the ESP32’s I²C hardware pins:
 
 Power:
 
-- SHT40:
+- **SHT40:**
   - VCC → 3.3 V
   - GND → GND
-- WE-DA-361:
-  - VCC → 3.3 V (supports 3.3–5 V)
+- **WE-DA-361 OLED:**
+  - VCC → 3.3 V (module supports 3.3–5 V)
   - GND → GND
 
-If modules do not already include pull-ups on SDA/SCL, add ~4.7 kΩ from SDA to 3.3 V and from SCL to 3.3 V.
+If the modules **do not** have pull-up resistors on SDA/SCL:
+
+- Add ~4.7 kΩ from SDA → 3.3 V.
+- Add ~4.7 kΩ from SCL → 3.3 V.
 
 ### 3.3 Soil Moisture Sensors (HD38)
 
-Use ADC1 pins (required when Wi-Fi is enabled):
+Use ADC1 pins (Wi-Fi-safe ADC):
 
-| Sensor         | ESP32 pin | Notes          |
-|----------------|-----------|----------------|
-| Soil sensor 1  | 34        | ADC1_CH6, input only |
-| Soil sensor 2  | 35        | ADC1_CH7, input only |
+| Sensor         | ESP32 pin | Notes                 |
+|----------------|-----------|-----------------------|
+| Soil sensor 1  | 34        | ADC1_CH6 (input only) |
+| Soil sensor 2  | 35        | ADC1_CH7 (input only) |
 
-Power both HD38 modules from **3.3 V**:
+Power for each HD38:
 
 - VCC → 3.3 V  
 - GND → GND  
-- AO (analog out) → 34 / 35 respectively
+- AO (analog out) → respective ADC pin (34 or 35)
 
-> Powering the HD38 at 3.3 V ensures its analog output never exceeds the ADC input range of the ESP32.
-
----
-
-## 4. Software Setup
-
-### 4.1 File Structure
-
-For Arduino IDE:
-
-```text
-controller/
-  controller.ino
-```
-
-Ensure the folder name matches the `.ino` file name.
-
-### 4.2 Required Libraries
-
-Install these via **Arduino Library Manager**:
-
-- `Adafruit SHT4X`  
-- `Adafruit Unified Sensor`  
-- `U8g2`
-
-And ensure you have the **ESP32 board support** installed (e.g. via Espressif’s board manager URL).
-
-### 4.3 Board Settings (Arduino IDE)
-
-- **Board**: `ESP32 Dev Module` (or a specific ESP32-4R-A2 variant if available)
-- **Flash size**, **Partition scheme**, **Upload speed**: typical ESP32 defaults are fine.
-- **Port**: the COM port corresponding to your board.
-
-### 4.4 Wi-Fi Credentials & First Boot
-
-- Wi-Fi SSID/password are **stored in NVS (Preferences)** and edited through the `/config` page.
-- On first boot (or after clearing credentials) the ESP32 starts a **setup access point** named `EZgrow-Setup` so you can open
-  `http://192.168.4.1/config` and enter Wi-Fi details.
-- After valid credentials are saved, the device switches back to station mode and connects automatically.
+> Use 3.3 V for HD38 to keep the analog output within ESP32 ADC limits.
 
 ---
 
-## 5. Runtime Behaviour
+## 4. Web UI Endpoints
 
-### 5.1 Web UI
+### 4.1 Dashboard (`/`)
 
-At boot the controller tries to join the stored Wi-Fi network for up to ~20 seconds. If it fails or no credentials are present,
-it keeps relays off, shows an error on Serial/OLED, and starts the `EZgrow-Setup` access point so you can still reach the web
-UI. Successful connections print and briefly display the IP address.
+Main interface:
 
-Open a browser and navigate to:
-
-```text
-http://<esp32-ip-address>/
-```
-
-#### 5.1.1 Status Page (`/`)
-
-Shows:
-
-- Current time (once NTP is synced)
-- Temperature (°C)
-- Humidity (%)
-- Soil moisture 1 and 2 (%)
+- Time (if NTP synced, otherwise “syncing...”).
+- Temperature, humidity.
+- Soil 1/2 moisture.
 - Relay states and modes:
-  - Light 1 (L1), Light 2 (L2)
-  - Fan (F)
-  - Pump (P)
-- For each:
-  - Status: ON/OFF
-  - Mode: AUTO/MANUAL
-- Light schedule summary:
-  - L1: HH:MM–HH:MM
-  - L2: HH:MM–HH:MM
+  - Light 1, Light 2, Fan, Pump (ON/OFF + AUTO/MAN).
+- Light schedules (L1 and L2).
+- Buttons:
+  - **Toggle** for each device (in MANUAL mode).
+  - **Switch to AUTO/MANUAL** for each device.
+- History charts:
+  - **Temperature & Humidity** (line chart, dual axis).
+  - **Light 1 & Light 2** (step-like 0/1 chart).
 
-Buttons:
+Charts are rendered with Chart.js loaded locally from `/chart.umd.min.js`.
 
-- **Toggle** (when in MANUAL mode)  
-- **Switch to AUTO/MANUAL** to change control mode
+### 4.2 Configuration (`/config`)
 
-#### 5.1.2 Configuration Page (`/config`)
+- Fan ON temperature (°C).
+- Fan OFF temperature (°C).
+- Soil DRY threshold (%).
+- Soil WET threshold (%).
+- Pump minimum OFF time (seconds).
+- Pump maximum ON time (seconds).
+- Light 1 schedule:
+  - Use schedule (checkbox).
+  - ON time, OFF time (`<input type="time">`).
+- Light 2 schedule:
+  - Use schedule (checkbox).
+  - ON time, OFF time.
+- AUTO/MANUAL checkboxes for:
+  - Fan.
+  - Pump.
 
-Access via the “Configuration” button or directly:
+On submit:
 
-```text
-http://<esp32-ip-address>/config
-```
+- Values are validated (basic sanity).
+- Configuration is saved to NVS (via `Preferences`).
+- New values are applied immediately (no reboot required).
 
-Configurable parameters:
+### 4.3 Control endpoints
 
-- **Wi-Fi**:
-  - SSID and password (stored securely in NVS)
-- **Web authentication** (optional basic auth):
-  - Enable/disable protection for state-changing routes
-  - Username (>=3 chars) and password (>=6 chars)
-- **Fan control**:
-  - Fan ON temperature (°C)
-  - Fan OFF temperature (°C)
-- **Soil moisture thresholds**:
-  - Soil DRY threshold (%)
-  - Soil WET threshold (%)
-- **Pump timing**:
-  - Pump minimum OFF time (seconds)
-  - Pump maximum ON time (seconds)
-- **Light schedules**:
-  - “Use schedule for Light 1” (checkbox)
-  - Light 1 ON time (HTML `<input type="time">`, e.g. 08:00)
-  - Light 1 OFF time
-  - “Use schedule for Light 2”
-  - Light 2 ON/OFF times
-- **Credential reset links**:
-  - Clear stored Wi-Fi credentials
-  - Clear authentication credentials (if you forget them)
+- `GET /toggle?id=light1|light2|fan|pump`  
+  Toggles the specified relay **only if** that device is in MANUAL mode.
 
-When you press **“Save”**:
+- `GET /mode?id=light1|light2|fan|pump&auto=0|1`  
+  Switches the specified device between AUTO and MANUAL:
+  - For lights: toggles use of schedule (AUTO) vs manual relay control.
+  - For fan/pump: toggles automatic control logic vs manual relay control.
 
-- Values are validated (basic sanity checks)
-- Parameters are persisted in ESP32 **NVS** via `Preferences`
-- No reboot is required; new values are applied immediately
+### 4.4 History API (`/api/history`)
 
-### 5.2 Automatic Control Logic
-
-#### 5.2.1 Fan
-
-- Used when `autoFan == true`:
-  - **ON** when `temperature ≥ fanOnTemp`
-  - **OFF** when `temperature ≤ fanOffTemp`
-- Hysteresis avoids frequent switching.
-
-#### 5.2.2 Pump
-
-- Used when `autoPump == true`:
-  - Soil moisture is mapped from raw ADC (0–4095) to 0–100 % (rough scale; calibrate in practice).
-  - “Too dry” if either soil 1 or soil 2 `< soilDryThreshold`.
-  - “Wet enough` if both soil 1 and soil 2 `> soilWetThreshold`.
-- Pump algorithm:
-  - If **not running** and:
-    - “Too dry” AND
-    - Last pump stop > `pumpMinOffSec`
-    - → Pump turns **ON**
-  - If **running** and:
-    - “Wet enough” OR
-    - Pump ON time > `pumpMaxOnSec`
-    - → Pump turns **OFF**
-
-This protects against rapid cycling and over-watering.
-
-#### 5.2.3 Lights
-
-Two modes per light:
-
-- **AUTO (scheduled)**:
-  - Uses NTP time and configured `ON/OFF` times.
-  - Times are in minutes since midnight; the code supports schedules that **cross midnight** (e.g. 20:00–06:00).
-  - If schedule says “ON” at current time, light state is forced ON; OFF otherwise.
-- **MANUAL**:
-  - Web UI “Toggle” button directly controls the relay.
-  - Schedule is ignored.
-
-You can switch between AUTO and MANUAL from the status page or the config page (for schedules).
+- Returns a JSON payload containing an array of historical points for the last 24 hours, one per minute.
+- Used by the dashboard’s JavaScript to render charts.
 
 ---
 
-## 6. Time Zone and NTP
+## 5. Control Logic Details
 
-By default, the code uses:
+### 5.1 Fan (Temperature-based)
 
-```cpp
-const char* TZ_INFO = "CET-1CEST,M3.5.0,M10.5.0/3";
-```
+If `autoFan` is enabled:
 
-This is suitable for **Central Europe (CET/CEST)**. If you are in a different time zone, adjust `TZ_INFO` to a correct POSIX time zone string.
+- Fan turns **ON** when:
+  - `temperature ≥ fanOnTemp`
+- Fan turns **OFF** when:
+  - `temperature ≤ fanOffTemp`
 
-NTP servers can also be customised:
+Hysteresis (`fanOnTemp` > `fanOffTemp`) prevents rapid cycling.
 
-```cpp
-const char* NTP_SERVER1 = "pool.ntp.org";
-const char* NTP_SERVER2 = "time.nist.gov";
-```
+### 5.2 Pump (Soil + Timing-based)
 
-Time is used only for light schedules and the clock display.
+If `autoPump` is enabled:
+
+- “Too dry” if **either** soil sensor `< soilDryThreshold`.
+- “Wet enough” if **both** soil sensors `> soilWetThreshold`.
+- Pump turns **ON** when:
+  - Not currently running, AND
+  - “Too dry”, AND
+  - At least `pumpMinOffSec` seconds elapsed since the last stop.
+- Pump turns **OFF** when:
+  - “Wet enough”, OR
+  - Pump has been ON for more than `pumpMaxOnSec` seconds.
+
+### 5.3 Lights (Schedules + Manual)
+
+Each light has:
+
+- `onMinutes` and `offMinutes` (minutes since midnight).
+- `enabled` flag:
+  - `true`: AUTO (schedule active).
+  - `false`: MANUAL.
+
+Schedules support intervals that **cross midnight**:
+
+- Example 1: 08:00–20:00 (day).
+- Example 2: 20:00–06:00 (night).
+
+When a light is in MANUAL mode, its relay is controlled solely by the web UI `Toggle` button.
+
+---
+
+## 6. OLED Display Content
+
+The WE-DA-361 0.91" OLED (128×32) shows:
+
+- **Line 1:** `T:xx.xC H:yy%`
+- **Line 2:** `S1:aa% S2:bb%`
+- **Line 3:** `L1xA/M L2xA/M FxA/M PxA/M`
+
+Where:
+
+- `x` = `1` (ON) or `0` (OFF).
+- `A` = AUTO / `M` = MANUAL.
+
+At boot, the OLED briefly shows:
+
+- `"Greenhouse boot..."`, then
+- The ESP32’s IP address (for convenience to open the web UI).
 
 ---
 
 ## 7. Calibration Notes
 
-### 7.1 Soil Moisture (HD38)
+### 7.1 Soil Moisture
 
-The mapping in the code is a simple:
+Default mapping:
 
 ```cpp
-soilPercent = map(rawADC, 0, 4095, 100, 0);
+soilPercent = map(raw, 0, 4095, 100, 0);
+soilPercent = constrain(soilPercent, 0, 100);
 ```
 
-You should calibrate for your specific sensors and soil:
+To calibrate:
 
-1. Insert sensor in **dry** medium, note ADC value `raw_dry`.
-2. Insert in **fully wet** medium, note ADC value `raw_wet`.
-3. Replace the `map()` with a custom mapping:
+1. Record `raw_dry` in dry medium and `raw_wet` in fully wet medium.
+2. Use:
 
 ```cpp
 soilPercent = map(raw, raw_wet, raw_dry, 100, 0);
 soilPercent = constrain(soilPercent, 0, 100);
 ```
 
-Adjust `soilDryThreshold` and `soilWetThreshold` accordingly via the web config.
+Then adjust `soilDryThreshold` and `soilWetThreshold` via `/config`.
 
-### 7.2 Temperature / Fan
+### 7.2 Temperature Thresholds
 
-Choose `fanOnTemp` and `fanOffTemp` appropriate for your plants and environment, e.g.:
+Example configuration:
 
-- `fanOnTemp` = 28 °C
-- `fanOffTemp` = 26 °C
+- `fanOnTemp` = 28 °C  
+- `fanOffTemp` = 26 °C  
+
+These can be tuned in the config UI to better fit your greenhouse.
 
 ---
 
 ## 8. Security Considerations
 
-- The web UI supports **optional HTTP Basic Auth** (configure username/password on `/config`). When enabled, all state-changing
-  endpoints (`/toggle`, `/mode`, `/config`) are protected.
-- Transport is still **plain HTTP**; avoid exposing the ESP32 directly to the internet and prefer isolated LAN/VLAN or a
-  TLS-terminating reverse proxy.
+- The controller uses **HTTP without authentication** by default.
+- Recommended precautions:
+  - Keep it on a local network, not directly exposed to the internet.
+  - If needed:
+    - Put it behind a firewall or in a separate VLAN.
+    - Use a reverse proxy with HTTPS and optional authentication.
+    - Extend the code with HTTP Basic Auth for sensitive endpoints.
 
 ---
 
-## 9. Troubleshooting
+## 9. Possible Extensions
 
-1. **Display stays blank**
-   - Confirm WE-DA-361 is wired:
-     - VCC → 3.3 V
-     - GND → GND
-     - SDA → GPIO 21
-     - SCL → GPIO 22
-   - Check library constructor: the code assumes `SSD1306 128×32`.
-   - Try slower I²C or check for address conflicts if you have multiple I²C devices.
-
-2. **Soil moisture always 0 or 100 %**
-   - Verify HD38 sensors are powered correctly (3.3 V).
-   - Confirm AO pin is connected to GPIO 34/35, not digital pins.
-   - Use `Serial.print(analogRead(...))` to see raw values for calibration.
-
-3. **Relays inverted (ON when they should be OFF)**
-   - Adjust `RELAY_ACTIVE_LEVEL` in the code:
-     - If `LOW` = ON, keep as is.
-     - If `HIGH` = ON, change:
-       ```cpp
-       const bool RELAY_ACTIVE_LEVEL   = HIGH;
-       const bool RELAY_INACTIVE_LEVEL = !RELAY_ACTIVE_LEVEL;
-       ```
-
-4. **No NTP time / schedules not working**
-   - Ensure the ESP32 can reach the NTP servers (internet access).
-   - Check Wi-Fi connectivity and that time shows up on the main page.
-   - If your network blocks NTP, use a local NTP server and configure `NTP_SERVER1` accordingly.
-
-5. **Web page not reachable**
-   - Check the IP on serial monitor and OLED.
-   - Ensure your computer is on the same network.
-   - Confirm no firewall is blocking access.
-   - If Wi-Fi credentials are wrong, join the `EZgrow-Setup` AP, open `/config`, and update them.
-
-6. **Forgot Wi-Fi or auth credentials**
-   - Browse to `/config?clear_wifi=1` to erase saved SSID/password (device will drop back to AP setup mode).
-   - Browse to `/config?clear_auth=1` to disable authentication.
+- Web-based Wi-Fi configuration (store SSID/password in NVS).
+- Add HTTP Basic Auth / token-based auth for `/config` and `/toggle`/`/mode`.
+- MQTT integration (for Home Assistant, etc.).
+- Long-term data logging to SD card or an external database.
+- Additional sensors:
+  - CO₂
+  - Light intensity
+  - Pressure, etc.
+- BLE / Bluetooth-based control UI.
 
 ---
 
-## 10. Future Extensions
-
-- Add **JSON API** (`/api/status`) for integration with Home Assistant or other systems.
-- Add **MQTT** publish/subscribe for remote monitoring and control.
-- Add optional HTTPS via a TLS-terminating proxy.
-- Log sensor data to an SD card or remote database.
-- Add additional sensors (CO₂, light intensity, etc.) on the same I²C bus.
-
----
-
-## 11. License
+## 10. License
 
 Choose an appropriate license for your project (for example, MIT):
 
@@ -408,7 +462,20 @@ MIT License
 Copyright (c) <year> <your name>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
-...
-```
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-Replace with your preferred license text and owner.
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```

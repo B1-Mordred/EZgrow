@@ -52,16 +52,7 @@ All charts work **offline**, using **LittleFS** to serve Chart.js from the ESP32
    - `Adafruit Unified Sensor`
    - `U8g2`
 
-4. **Download Chart.js and place it in `data/`**
-
-   - Download a recent **Chart.js 4 UMD build** (e.g. from JSDelivr).
-   - Save it as:
-
-     ```text
-     controller/data/chart.umd.min.js
-     ```
-
-5. **Configure Wi-Fi credentials**
+4. **Configure Wi-Fi credentials**
 
    - Open `Greenhouse.cpp`.
    - Locate:
@@ -73,18 +64,18 @@ All charts work **offline**, using **LittleFS** to serve Chart.js from the ESP32
 
    - Replace with your actual Wi-Fi SSID and password.
 
-6. **Upload LittleFS data**
+5. **Upload LittleFS data**
 
    - Install the **ESP32 LittleFS Data Upload** plugin for Arduino IDE (if not already installed).
    - In Arduino IDE, select the `controller` sketch.
    - Use the **“ESP32 LittleFS Data Upload”** menu to upload the `data/` folder to the ESP32.
 
-7. **Compile and upload the firmware**
+6. **Compile and upload the firmware**
 
    - Click **Verify** to compile.
    - Click **Upload** to flash the ESP32-4R-A2.
 
-8. **Connect to the web UI**
+7. **Connect to the web UI**
 
    - Open the Serial Monitor at **115200 baud**.
    - After boot, note the IP address printed (and briefly shown on the OLED).
@@ -454,12 +445,10 @@ These can be tuned in the config UI to better fit your greenhouse.
 
 ## 10. License
 
-Choose an appropriate license for your project (for example, MIT):
-
 ```text
 MIT License
 
-Copyright (c) <year> <your name>
+Copyright (c) 2025 MHn
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

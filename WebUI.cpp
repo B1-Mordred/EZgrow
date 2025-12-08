@@ -4,9 +4,18 @@
 #include <WebServer.h>
 #include <LittleFS.h>
 #include <WiFi.h>
+#include <DNSServer.h>
 
 // Single global web server (port 80)
 static WebServer server(80);
+
+// DNS server for captive portal
+static DNSServer dnsServer;
+static bool      sCaptivePortalActive = false;
+
+// Web UI Basic Auth credentials (loaded from NVS)
+static String sWebAuthUser;
+static String sWebAuthPass;
 
 // ================= Helpers =================
 
@@ -23,9 +32,31 @@ static int parseTimeToMinutes(const String &s, int fallback) {
   return h * 60 + m;
 }
 
+// In AP-only (captive portal) mode, we skip authentication so onboarding is open.
+// In STA mode, all protected endpoints require Basic Auth, unless username is empty.
+static bool requireAuth() {
+  if (sCaptivePortalActive) {
+    // Captive/AP mode: no auth required
+    return true;
+  }
+
+  // If username is empty, auth is disabled
+  if (sWebAuthUser.length() == 0) {
+    return true;
+  }
+
+  if (!server.authenticate(sWebAuthUser.c_str(), sWebAuthPass.c_str())) {
+    server.requestAuthentication();
+    return false;
+  }
+  return true;
+}
+
 // ================= History API =================
 
 static void handleHistoryApi() {
+  if (!requireAuth()) return;
+
   String json;
   json.reserve(20000);
   json += "{ \"points\":[";
@@ -68,6 +99,7 @@ static void handleHistoryApi() {
 // ================= Static Chart.js from LittleFS =================
 
 static void handleChartJs() {
+  // Chart.js is not sensitive; no auth required even in STA mode
   File f = LittleFS.open("/chart.umd.min.js", "r");
   if (!f) {
     server.send(404, "text/plain", "chart.umd.min.js not found");
@@ -80,6 +112,8 @@ static void handleChartJs() {
 // ================= Wi-Fi configuration page =================
 
 static void handleWifiConfigGet() {
+  if (!requireAuth()) return;
+
   String storedSsid, storedPass;
   loadWifiCredentials(storedSsid, storedPass);
 
@@ -111,7 +145,9 @@ static void handleWifiConfigGet() {
   page += "</head><body>";
 
   page += "<h1>Wi-Fi Settings</h1>";
-  page += "<p><a href='/'><button>Back</button></a></p>";
+  if (!sCaptivePortalActive) {
+    page += "<p><a href='/'><button>Back</button></a></p>";
+  }
 
   // Current connection status
   page += "<div class='card'><h2>Current connection</h2><p>";
@@ -183,6 +219,8 @@ static void handleWifiConfigGet() {
 }
 
 static void handleWifiConfigPost() {
+  if (!requireAuth()) return;
+
   if (!server.hasArg("ssid")) {
     server.send(400, "text/plain", "Missing ssid");
     return;
@@ -218,6 +256,8 @@ static void handleWifiConfigPost() {
 // ================= Status page (/) =================
 
 static void handleRoot() {
+  if (!requireAuth()) return;
+
   String page;
   page.reserve(12000);
 
@@ -380,6 +420,8 @@ static void handleRoot() {
 // ================= Relay toggle & mode =================
 
 static void handleToggle() {
+  if (!requireAuth()) return;
+
   if (!server.hasArg("id")) {
     server.send(400, "text/plain", "Missing id");
     return;
@@ -401,6 +443,8 @@ static void handleToggle() {
 }
 
 static void handleMode() {
+  if (!requireAuth()) return;
+
   if (!server.hasArg("id") || !server.hasArg("auto")) {
     server.send(400, "text/plain", "Missing args");
     return;
@@ -422,8 +466,10 @@ static void handleMode() {
 // ================= Config page =================
 
 static void handleConfigGet() {
+  if (!requireAuth()) return;
+
   String page;
-  page.reserve(6000);
+  page.reserve(7000);
 
   page += "<!DOCTYPE html><html><head><meta charset='utf-8'>";
   page += "<meta name='viewport' content='width=device-width,initial-scale=1'>";
@@ -497,6 +543,18 @@ static void handleConfigGet() {
   if (gConfig.autoPump) page += " checked";
   page += "> Use automatic pump control</label>";
 
+  // Web UI auth
+  page += "<h2>Web UI authentication</h2>";
+  page += "<p><small>If username is empty, HTTP authentication is disabled.</small></p>";
+
+  page += "<label>Username:<br>";
+  page += "<input type='text' name='authUser' value='";
+  page += sWebAuthUser;
+  page += "'></label>";
+
+  page += "<label>Password (leave blank to keep current):<br>";
+  page += "<input type='password' name='authPass' value=''></label>";
+
   page += "<button type='submit'>Save</button>";
   page += "</form></div>";
 
@@ -506,6 +564,8 @@ static void handleConfigGet() {
 }
 
 static void handleConfigPost() {
+  if (!requireAuth()) return;
+
   // Env thresholds
   if (server.hasArg("fanOn")) {
     float v = server.arg("fanOn").toFloat();
@@ -576,15 +636,75 @@ static void handleConfigPost() {
   gConfig.autoFan  = server.hasArg("autoFan");
   gConfig.autoPump = server.hasArg("autoPump");
 
+  // Web UI auth: update credentials in memory and NVS
+  String newUser = sWebAuthUser;
+  String newPass = sWebAuthPass;
+
+  if (server.hasArg("authUser")) {
+    String u = server.arg("authUser");
+    u.trim();
+    // username may be empty -> disable auth
+    newUser = u;
+  }
+
+  if (server.hasArg("authPass")) {
+    String p = server.arg("authPass");
+    p.trim();
+    // If password field is non-empty, update it; if empty, keep existing
+    if (p.length() > 0) {
+      newPass = p;
+    }
+  }
+
+  // If username is empty, we also clear password to avoid confusion
+  if (newUser.length() == 0) {
+    newPass = "";
+  }
+
+  sWebAuthUser = newUser;
+  sWebAuthPass = newPass;
+
   saveConfig();
+  saveWebAuthConfig(sWebAuthUser, sWebAuthPass);
 
   server.sendHeader("Location", "/config", true);
   server.send(302, "text/plain", "");
 }
 
+// ================= Not found / captive portal redirect =================
+
+static void handleNotFound() {
+  if (sCaptivePortalActive) {
+    // In captive portal mode, redirect everything to Wi-Fi setup page
+    server.sendHeader("Location", "/wifi", true);
+    server.send(302, "text/plain", "");
+    return;
+  }
+
+  server.send(404, "text/plain", "Not found");
+}
+
 // ================= Public API =================
 
 void initWebServer() {
+  // Load web auth credentials from NVS at startup
+  loadWebAuthConfig(sWebAuthUser, sWebAuthPass);
+
+  // Determine if we should run a captive portal:
+  // AP is enabled AND STA is NOT connected
+  bool hasAp        = (WiFi.getMode() & WIFI_MODE_AP);
+  bool staConnected = (WiFi.status() == WL_CONNECTED);
+
+  if (hasAp && !staConnected) {
+    sCaptivePortalActive = true;
+    IPAddress apIP = WiFi.softAPIP();
+    Serial.print("[Portal] Captive portal active on AP IP: ");
+    Serial.println(apIP);
+    dnsServer.start(53, "*", apIP);
+  } else {
+    sCaptivePortalActive = false;
+  }
+
   server.on("/",                 HTTP_GET,  handleRoot);
   server.on("/toggle",           HTTP_GET,  handleToggle);
   server.on("/mode",             HTTP_GET,  handleMode);
@@ -594,10 +714,15 @@ void initWebServer() {
   server.on("/chart.umd.min.js", HTTP_GET,  handleChartJs);
   server.on("/wifi",             HTTP_GET,  handleWifiConfigGet);
   server.on("/wifi",             HTTP_POST, handleWifiConfigPost);
+  server.onNotFound(handleNotFound);
 
   server.begin();
 }
 
 void handleWebServer() {
   server.handleClient();
+
+  if (sCaptivePortalActive) {
+    dnsServer.processNextRequest();
+  }
 }

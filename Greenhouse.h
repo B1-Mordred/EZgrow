@@ -102,6 +102,16 @@ String minutesToTimeStr(int minutes);
 // Check if, for a schedule, the light should be ON at nowMinutes
 bool scheduleIsOn(int onMin, int offMin, int nowMin);
 
+// ========== Web UI authentication (Basic Auth in NVS) ==========
+
+// Load web UI credentials (username/password) from NVS.
+// If nothing is stored, defaults "admin"/"admin" are returned.
+void loadWebAuthConfig(String &userOut, String &passOut);
+
+// Save web UI credentials (username/password) to NVS.
+// If userOut is empty, authentication will effectively be disabled.
+void saveWebAuthConfig(const String &user, const String &pass);
+
 // ========== Wi-Fi credentials storage (NVS) ==========
 
 // Load Wi-Fi credentials from NVS; falls back to compiled defaults if empty.

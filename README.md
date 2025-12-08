@@ -1,4 +1,4 @@
-# ESP32 Greenhouse Controller (ESP32-4R-A2, Multi-file, LittleFS, Wi-Fi Config + AP Fallback)
+# ESP32 Greenhouse Controller (ESP32-4R-A2, Multi-file, LittleFS, Wi-Fi Config, Auth + AP Captive Portal)
 
 This project implements a greenhouse controller based on the **ESP32-4R-A2** relay board.
 
@@ -16,16 +16,18 @@ It reads:
 It displays status on a small **0.91" WE-DA-361 I²C OLED** and exposes a web UI (via Wi-Fi) with:
 
 - Dashboard (live sensors, relay states, modes)  
-- Configuration (thresholds, timings, light schedules)  
+- Configuration (thresholds, timings, light schedules, web-auth config)  
 - History charts (temperature, humidity, light states)  
 - **Wi-Fi configuration** (scan SSIDs, select, store SSID/password in NVS)  
+- **HTTP Basic Authentication** (credentials stored in NVS, configurable in UI)  
+- **Captive portal** for Wi-Fi onboarding in AP mode (auto-redirects to `/wifi`)  
 
 All charts work **offline**, using **LittleFS** to serve Chart.js from the ESP32.
 
 The device supports:
 
 - **Station (STA) mode**: connects to your existing Wi-Fi network.  
-- **Access Point (AP) fallback**: starts `EZgrow-Setup` AP if STA connection fails or no SSID is configured.
+- **Access Point (AP) fallback + Captive Portal**: starts `EZgrow-Setup` AP and captive portal if STA connection fails or no SSID is configured.
 
 ---
 
@@ -57,6 +59,7 @@ The device supports:
    - `Adafruit SHT4X`
    - `Adafruit Unified Sensor`
    - `U8g2`
+   - (Core libraries `WiFi.h`, `WebServer.h`, `DNSServer.h`, `Preferences.h` are part of the ESP32 core.)
 
 4. **Download Chart.js and place it in `data/`**
 
@@ -90,7 +93,7 @@ The device supports:
    - Click **Verify** to compile.
    - Click **Upload** to flash the ESP32-4R-A2.
 
-8. **First-time Wi-Fi setup**
+8. **First-time Wi-Fi setup / Captive portal**
 
    After boot, one of two things will happen:
 
@@ -107,19 +110,30 @@ The device supports:
    http://<esp32-ip-address>/
    ```
 
+   - Default web credentials (when first booting):  
+     - User: `admin`  
+     - Password: `admin`
+
+   Endpoints:
+
    - `/` : dashboard and charts
-   - `/config` : control thresholds, timings, schedules
+   - `/config` : control thresholds, timings, schedules, auth config
    - `/wifi` : Wi-Fi configuration (scan, select SSID, save)
 
-   ### 8.2 If connection fails or no SSID configured
+   ### 8.2 If connection fails or no SSID configured (AP + Captive Portal)
 
    - The ESP32 starts an **access point (AP)**:
 
      - SSID: `EZgrow-Setup`  
-     - Password: _empty_ (open AP, set a password in the code if desired)
+     - Password: _empty_ (open AP, set a password in `initHardware()` if desired)
+
+   - The controller enables a **captive portal**:
+     - A DNS server resolves all hostnames to the ESP32 AP IP.
+     - Any request to an unknown path is redirected to `/wifi`.
 
    - Connect your phone or laptop to `EZgrow-Setup`.
-   - Open:
+   - Most devices will automatically pop up a Wi-Fi sign-in page.  
+     If not, open:
 
      ```text
      http://192.168.4.1/wifi
@@ -129,7 +143,7 @@ The device supports:
      - Click a network in the table to populate the SSID.
      - Enter your Wi-Fi password.
      - Save.
-   - The device will **reboot** and attempt to connect to the selected Wi-Fi network.
+   - The device will **reboot** and attempt to connect to the selected Wi-Fi network in STA mode.
 
 ---
 
@@ -152,12 +166,19 @@ The device supports:
 ### Control Logic
 
 - **Fan control** (automatic):
-  - Temperature-based control with configurable ON/OFF thresholds (hysteresis).
+  - Controlled by **temperature OR humidity** with configurable hysteresis:
+    - `fanOnTemp`, `fanOffTemp` (°C).
+    - `fanHumOn`, `fanHumOff` (% RH).
+  - Fan turns ON if temperature ≥ `fanOnTemp` **or** humidity ≥ `fanHumOn`.
+  - Fan turns OFF when **both** are back in safe range:
+    - temperature ≤ `fanOffTemp` **and** humidity ≤ `fanHumOff`.
+
 - **Pump control** (automatic):
   - Soil moisture-based control using 2 sensors and configurable:
-    - Dry/wet thresholds.
-    - Minimum OFF time.
-    - Maximum ON time.
+    - Dry/wet thresholds (`soilDryThreshold`, `soilWetThreshold`).
+    - Minimum OFF time (`pumpMinOffSec`).
+    - Maximum ON time (`pumpMaxOnSec`).
+
 - **Lights**:
   - Each light can run:
     - In **AUTO** mode using daily schedules (ON/OFF times).
@@ -169,16 +190,18 @@ The device supports:
 - **STA (station) mode**:
   - Connects to an existing Wi-Fi network using SSID/password stored in **NVS**.
   - Shows assigned IP on Serial and OLED.
+  - Web pages are protected by **HTTP Basic Auth** (unless disabled).
 
-- **AP fallback**:
+- **AP fallback + Captive Portal**:
   - If STA connection fails, or no SSID is configured:
     - Starts AP `EZgrow-Setup` (open by default).
     - AP IP is typically `192.168.4.1`.
-    - Wi-Fi setup is done via `/wifi`.
+    - Captive portal redirects all requests to `/wifi`.
+    - **No auth is required in AP-only mode** to simplify onboarding.
 
 ### Web Interface
 
-- **Dashboard (`/`)**:
+- **Dashboard (`/`)** (Basic Auth protected in STA mode):
   - Current time (from NTP).
   - Temperature (°C), humidity (%).
   - Soil moisture 1/2 (%).
@@ -187,16 +210,23 @@ The device supports:
   - History charts:
     - Temperature and humidity (line chart).
     - Light 1 and Light 2 states (step chart).
-  - Link to `/wifi` for network configuration.
+  - Links to `/config` and `/wifi`.
 
-- **Configuration (`/config`)**:
-  - Fan ON temperature (°C).
-  - Fan OFF temperature (°C).
-  - Soil DRY/WET thresholds (%).
-  - Pump minimum OFF time (s).
-  - Pump maximum ON time (s).
+- **Configuration (`/config`)** (Basic Auth protected in STA mode):
+  - Environment thresholds:
+    - Fan ON/OFF temperature.
+    - Fan ON/OFF humidity.
+    - Soil DRY/WET thresholds.
+    - Pump minimum OFF time.
+    - Pump maximum ON time.
   - Light 1/2 schedules (ON/OFF time + “use schedule” flags).
   - AUTO/MANUAL for fan and pump.
+  - **Web UI authentication section**:
+    - Username:
+      - If empty, **HTTP authentication is disabled**.
+    - Password:
+      - If blank on submit, the existing password is kept.
+      - If non-empty, updates the stored password.
 
 - **Wi-Fi configuration (`/wifi`)**:
   - Lists available SSIDs (scanned with `WiFi.scanNetworks()`).
@@ -205,8 +235,9 @@ The device supports:
     - SSID (clicking a row in the table fills this).
     - Password.
   - On submit:
-    - Credentials are saved to NVS.
-    - Device reboots and attempts connection with new credentials.
+    - Credentials are stored in NVS (`gh_wifi`).
+    - Device responds with a “saved” page.
+    - Device **restarts** and attempts connection with new credentials.
 
 - **History API (`/api/history`)**:
   - JSON feed of the last 24 hours (1 point per minute) with:
@@ -218,23 +249,23 @@ The device supports:
 - **Static asset from LittleFS**:
   - `/chart.umd.min.js` – Chart.js UMD bundle served from LittleFS for offline charts.
 
-### Data Logging
+### Authentication behaviour summary
 
-- In-memory **ring buffer** for history:
-  - **1440 samples** (1 day at 1-minute interval).
-  - Each sample contains time, temperature, humidity, Light 1, Light 2.
-- Periodic logging every 1 minute.
+- **Credentials storage**:
+  - Username/password stored in NVS (`gh_auth` namespace).
+  - Initial default (when nothing stored):
+    - user: `admin`, pass: `admin`.
 
-### Configuration Persistence
+- **When auth is enforced**:
+  - In STA mode (ESP32 connected to a Wi-Fi network), all pages except Chart.js:
+    - `/`, `/config`, `/wifi`, `/api/history`, `/toggle`, `/mode` require Basic Auth.
+  - If **username is empty** in `/config`, auth is considered disabled:
+    - No Basic Auth challenge, all pages are open (not recommended on shared networks).
 
-- All settings stored in **NVS** via `Preferences`:
-  - Fan thresholds.
-  - Soil thresholds.
-  - Pump timings.
-  - Light 1/2 schedules and enabled flags.
-  - Fan and pump AUTO/MAN flags.
-  - Wi-Fi SSID and password.
-- Settings are reloaded at boot; no recompile needed to adjust behaviour.
+- **AP + captive portal mode**:
+  - When only AP mode is active (STA not connected), **auth is disabled regardless of stored credentials**:
+    - The goal is to make onboarding easy.
+    - After STA connection is established, auth applies again (if username is non-empty).
 
 ---
 
@@ -244,9 +275,9 @@ The device supports:
 controller/
   controller.ino        # Main entry point (setup/loop)
   Greenhouse.h          # Config/state structs, function declarations
-  Greenhouse.cpp        # Hardware init, sensors, control logic, Wi-Fi/AP, history
+  Greenhouse.cpp        # Hardware init, sensors, control logic, Wi-Fi/AP, NTP, history, NVS helpers
   WebUI.h               # Web server API declarations
-  WebUI.cpp             # HTTP routes, HTML, config UI, Wi-Fi UI, charts
+  WebUI.cpp             # HTTP routes, HTML, config UI, Wi-Fi UI, history, auth, captive portal
 
   data/
     chart.umd.min.js    # Chart.js UMD bundle (served via LittleFS)
@@ -329,7 +360,7 @@ Power for each HD38:
 
 ### 4.1 Dashboard (`/`)
 
-Main interface:
+Main interface (Basic Auth protected in STA mode):
 
 - Time (if NTP synced, otherwise “syncing...”).
 - Temperature, humidity.
@@ -344,13 +375,17 @@ Main interface:
   - **Temperature & Humidity** (line chart, dual axis).
   - **Light 1 & Light 2** (step-like 0/1 chart).
 - Direct links to:
-  - `/config` (greenhouse logic)
+  - `/config` (greenhouse logic + auth settings)
   - `/wifi` (network config)
 
 ### 4.2 Configuration (`/config`)
 
+Protected by Basic Auth in STA mode:
+
 - Fan ON temperature (°C).
 - Fan OFF temperature (°C).
+- Fan ON humidity (%RH).
+- Fan OFF humidity (%RH).
 - Soil DRY threshold (%).
 - Soil WET threshold (%).
 - Pump minimum OFF time (seconds).
@@ -364,14 +399,20 @@ Main interface:
 - AUTO/MANUAL checkboxes for:
   - Fan.
   - Pump.
+- **Web UI authentication**:
+  - Username (empty → disable auth).
+  - Password (leave blank to keep current, non-empty to change).
 
 On submit:
 
 - Values are validated (basic sanity).
 - Configuration is saved to NVS (via `Preferences`).
 - New values are applied immediately (no reboot required).
+- Auth changes take effect on the next request.
 
 ### 4.3 Wi-Fi configuration (`/wifi`)
+
+Protected by Basic Auth in STA mode, **open in AP-only mode** (onboarding):
 
 - **Current connection**:
   - Shows whether the ESP32 is connected and to which SSID.
@@ -396,32 +437,37 @@ On submit:
 ### 4.4 Control endpoints
 
 - `GET /toggle?id=light1|light2|fan|pump`  
-  Toggles the specified relay **only if** that device is in MANUAL mode.
+  Toggles the specified relay **only if** that device is in MANUAL mode.  
+  Protected by Basic Auth in STA mode.
 
 - `GET /mode?id=light1|light2|fan|pump&auto=0|1`  
   Switches the specified device between AUTO and MANUAL:
   - For lights: toggles use of schedule (AUTO) vs manual relay control.
-  - For fan/pump: toggles automatic control logic vs manual relay control.
+  - For fan/pump: toggles automatic control logic vs manual relay control.  
+  Protected by Basic Auth in STA mode.
 
 ### 4.5 History API (`/api/history`)
 
 - Returns a JSON payload containing an array of historical points for the last 24 hours, one per minute.
 - Used by the dashboard’s JavaScript to render charts.
+- Protected by Basic Auth in STA mode.
 
 ---
 
 ## 5. Control Logic Details
 
-### 5.1 Fan (Temperature-based)
+### 5.1 Fan (Temperature + Humidity)
 
 If `autoFan` is enabled:
 
+- Let `T` = measured temperature, `H` = measured relative humidity.
 - Fan turns **ON** when:
-  - `temperature ≥ fanOnTemp`
+  - `T ≥ fanOnTemp` **OR** `H ≥ fanHumOn`
 - Fan turns **OFF** when:
-  - `temperature ≤ fanOffTemp`
+  - `T ≤ fanOffTemp` **AND** `H ≤ fanHumOff`  
+  (or the respective values are unavailable, in which case they are ignored).
 
-Hysteresis (`fanOnTemp` > `fanOffTemp`) prevents rapid cycling.
+Hysteresis ensures stable behaviour (`fanOnTemp > fanOffTemp` and `fanHumOn > fanHumOff`).
 
 ### 5.2 Pump (Soil + Timing-based)
 
@@ -493,19 +539,21 @@ To calibrate:
 1. Record `raw_dry` in dry medium and `raw_wet` in fully wet medium.
 2. Use:
 
-```cpp
-soilPercent = map(raw, raw_wet, raw_dry, 100, 0);
-soilPercent = constrain(soilPercent, 0, 100);
-```
+   ```cpp
+   soilPercent = map(raw, raw_wet, raw_dry, 100, 0);
+   soilPercent = constrain(soilPercent, 0, 100);
+   ```
 
 Then adjust `soilDryThreshold` and `soilWetThreshold` via `/config`.
 
-### 7.2 Temperature Thresholds
+### 7.2 Temperature & Humidity Thresholds
 
 Example configuration:
 
-- `fanOnTemp` = 28 °C  
+- `fanOnTemp`  = 28 °C  
 - `fanOffTemp` = 26 °C  
+- `fanHumOn`   = 80 %  
+- `fanHumOff`  = 70 %  
 
 These can be tuned in the config UI to better fit your greenhouse.
 
@@ -513,21 +561,27 @@ These can be tuned in the config UI to better fit your greenhouse.
 
 ## 8. Security Considerations
 
-- The controller uses **HTTP without authentication** by default.
-- Recommended precautions:
-  - Keep it on a local network, not directly exposed to the internet.
-  - For AP mode, you may want to configure a password in `initHardware()`:
-    - Set a non-empty password for `WiFi.softAP(apSsid, apPass)`.
-  - If needed:
-    - Put it behind a firewall or in a separate VLAN.
-    - Use a reverse proxy with HTTPS and optional authentication.
-    - Extend the code with HTTP Basic Auth for sensitive endpoints.
+- **Web UI Auth**:
+  - HTTP Basic Auth; credentials stored in ESP32 NVS (plain text).
+  - Strongly recommended to set a reasonably strong password.
+  - You can disable auth by clearing the username field in `/config`.
+
+- **AP / captive portal**:
+  - AP is open by default (`EZgrow-Setup` with no password).
+  - For more security, set a password in `initHardware()` when calling `WiFi.softAP(...)`.
+
+- **Transport security**:
+  - The controller uses plain HTTP (no TLS).
+  - Recommended precautions:
+    - Keep it on a trusted local network, not exposed directly to the internet.
+    - Optionally place it behind a reverse proxy that terminates HTTPS and enforces additional auth.
 
 ---
 
 ## 9. Possible Extensions
 
-- Add HTTP Basic Auth / token-based auth for `/config`, `/wifi`, `/toggle`, and `/mode`.
+- Use HTTPS (with reverse proxy or ESP32 TLS if resources allow).
+- Add multi-user roles or API tokens for automation.
 - MQTT integration (for Home Assistant, etc.).
 - Long-term data logging to SD card or an external database.
 - Additional sensors:
@@ -535,13 +589,10 @@ These can be tuned in the config UI to better fit your greenhouse.
   - Light intensity
   - Pressure, etc.
 - BLE / Bluetooth-based control UI.
-- Captive portal for Wi-Fi onboarding (redirect to `/wifi` when connected to AP).
 
 ---
 
 ## 10. License
-
-Choose an appropriate license for your project (for example, MIT):
 
 ```text
 MIT License

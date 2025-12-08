@@ -156,6 +156,51 @@ void saveWifiCredentials(const String &ssid, const String &password) {
   Serial.println(ssid);
 }
 
+// ================= Web UI authentication (NVS) =================
+
+// Namespace: "gh_auth"
+// Keys: "user", "pass"
+// Default: "admin" / "admin"
+// If username is empty after load, auth is treated as disabled.
+
+void loadWebAuthConfig(String &userOut, String &passOut) {
+  // Defaults
+  userOut = "admin";
+  passOut = "admin";
+
+  if (!prefs.begin("gh_auth", true)) {
+    Serial.println("[AUTH] Preferences begin failed (read), using defaults");
+    return;
+  }
+
+  String u = prefs.getString("user", userOut);
+  String p = prefs.getString("pass", passOut);
+  prefs.end();
+
+  // If nothing stored, this keeps defaults "admin"/"admin"
+  userOut = u;
+  passOut = p;
+
+  // If user is empty, we treat auth as disabled (no Basic Auth)
+  // Caller can decide whether to enforce that or not.
+  Serial.print("[AUTH] Loaded web auth user: ");
+  Serial.println(userOut.length() ? userOut : String("<disabled>"));
+}
+
+void saveWebAuthConfig(const String &user, const String &pass) {
+  if (!prefs.begin("gh_auth", false)) {
+    Serial.println("[AUTH] Preferences begin failed (write)");
+    return;
+  }
+
+  prefs.putString("user", user);
+  prefs.putString("pass", pass);
+  prefs.end();
+
+  Serial.print("[AUTH] Saved web auth user: ");
+  Serial.println(user.length() ? user : String("<disabled>"));
+}
+
 // ================= Config load/save =================
 
 void loadConfig() {

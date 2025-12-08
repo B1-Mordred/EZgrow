@@ -162,10 +162,12 @@ void loadConfig() {
   // Defaults
   gConfig.env.fanOnTemp        = 28.0f;
   gConfig.env.fanOffTemp       = 26.0f;
+  gConfig.env.fanHumOn         = 80;      // 80 %RH ON
+  gConfig.env.fanHumOff        = 70;      // 70 %RH OFF
   gConfig.env.soilDryThreshold = 35;
   gConfig.env.soilWetThreshold = 45;
-  gConfig.env.pumpMinOffSec    = 5 * 60; // 5 minutes
-  gConfig.env.pumpMaxOnSec     = 30;     // 30 seconds
+  gConfig.env.pumpMinOffSec    = 5 * 60;  // 5 minutes
+  gConfig.env.pumpMaxOnSec     = 30;      // 30 seconds
 
   gConfig.light1.onMinutes  = 8 * 60;
   gConfig.light1.offMinutes = 20 * 60;
@@ -183,20 +185,22 @@ void loadConfig() {
     return;
   }
 
-  gConfig.env.fanOnTemp        = prefs.getFloat("fanOn",  gConfig.env.fanOnTemp);
-  gConfig.env.fanOffTemp       = prefs.getFloat("fanOff", gConfig.env.fanOffTemp);
-  gConfig.env.soilDryThreshold = prefs.getInt  ("soilDry", gConfig.env.soilDryThreshold);
-  gConfig.env.soilWetThreshold = prefs.getInt  ("soilWet", gConfig.env.soilWetThreshold);
-  gConfig.env.pumpMinOffSec    = prefs.getULong("pumpOff", gConfig.env.pumpMinOffSec);
-  gConfig.env.pumpMaxOnSec     = prefs.getULong("pumpOn",  gConfig.env.pumpMaxOnSec);
+  gConfig.env.fanOnTemp        = prefs.getFloat("fanOn",    gConfig.env.fanOnTemp);
+  gConfig.env.fanOffTemp       = prefs.getFloat("fanOff",   gConfig.env.fanOffTemp);
+  gConfig.env.fanHumOn         = prefs.getInt  ("fanHumOn", gConfig.env.fanHumOn);
+  gConfig.env.fanHumOff        = prefs.getInt  ("fanHumOff",gConfig.env.fanHumOff);
+  gConfig.env.soilDryThreshold = prefs.getInt  ("soilDry",  gConfig.env.soilDryThreshold);
+  gConfig.env.soilWetThreshold = prefs.getInt  ("soilWet",  gConfig.env.soilWetThreshold);
+  gConfig.env.pumpMinOffSec    = prefs.getULong("pumpOff",  gConfig.env.pumpMinOffSec);
+  gConfig.env.pumpMaxOnSec     = prefs.getULong("pumpOn",   gConfig.env.pumpMaxOnSec);
 
-  gConfig.light1.onMinutes  = prefs.getInt("l1OnMin", gConfig.light1.onMinutes);
+  gConfig.light1.onMinutes  = prefs.getInt("l1OnMin",  gConfig.light1.onMinutes);
   gConfig.light1.offMinutes = prefs.getInt("l1OffMin", gConfig.light1.offMinutes);
-  gConfig.light1.enabled    = prefs.getBool("l1Auto", gConfig.light1.enabled);
+  gConfig.light1.enabled    = prefs.getBool("l1Auto",  gConfig.light1.enabled);
 
-  gConfig.light2.onMinutes  = prefs.getInt("l2OnMin", gConfig.light2.onMinutes);
+  gConfig.light2.onMinutes  = prefs.getInt("l2OnMin",  gConfig.light2.onMinutes);
   gConfig.light2.offMinutes = prefs.getInt("l2OffMin", gConfig.light2.offMinutes);
-  gConfig.light2.enabled    = prefs.getBool("l2Auto", gConfig.light2.enabled);
+  gConfig.light2.enabled    = prefs.getBool("l2Auto",  gConfig.light2.enabled);
 
   gConfig.autoFan  = prefs.getBool("autoFan",  gConfig.autoFan);
   gConfig.autoPump = prefs.getBool("autoPump", gConfig.autoPump);
@@ -208,6 +212,14 @@ void loadConfig() {
     gConfig.env.fanOnTemp  = 28.0f;
     gConfig.env.fanOffTemp = 26.0f;
   }
+
+  gConfig.env.fanHumOn  = constrain(gConfig.env.fanHumOn,  0, 100);
+  gConfig.env.fanHumOff = constrain(gConfig.env.fanHumOff, 0, 100);
+  if (gConfig.env.fanHumOff >= gConfig.env.fanHumOn) {
+    gConfig.env.fanHumOn  = 80;
+    gConfig.env.fanHumOff = 70;
+  }
+
   gConfig.env.soilDryThreshold = constrain(gConfig.env.soilDryThreshold, 0, 100);
   gConfig.env.soilWetThreshold = constrain(gConfig.env.soilWetThreshold, 0, 100);
   if (gConfig.env.soilWetThreshold <= gConfig.env.soilDryThreshold) {
@@ -229,19 +241,21 @@ void saveConfig() {
     return;
   }
 
-  prefs.putFloat("fanOn",  gConfig.env.fanOnTemp);
-  prefs.putFloat("fanOff", gConfig.env.fanOffTemp);
-  prefs.putInt  ("soilDry", gConfig.env.soilDryThreshold);
-  prefs.putInt  ("soilWet", gConfig.env.soilWetThreshold);
-  prefs.putULong("pumpOff", gConfig.env.pumpMinOffSec);
-  prefs.putULong("pumpOn",  gConfig.env.pumpMaxOnSec);
+  prefs.putFloat("fanOn",    gConfig.env.fanOnTemp);
+  prefs.putFloat("fanOff",   gConfig.env.fanOffTemp);
+  prefs.putInt  ("fanHumOn", gConfig.env.fanHumOn);
+  prefs.putInt  ("fanHumOff",gConfig.env.fanHumOff);
+  prefs.putInt  ("soilDry",  gConfig.env.soilDryThreshold);
+  prefs.putInt  ("soilWet",  gConfig.env.soilWetThreshold);
+  prefs.putULong("pumpOff",  gConfig.env.pumpMinOffSec);
+  prefs.putULong("pumpOn",   gConfig.env.pumpMaxOnSec);
 
   prefs.putInt ("l1OnMin", gConfig.light1.onMinutes);
-  prefs.putInt ("l1OffMin", gConfig.light1.offMinutes);
+  prefs.putInt ("l1OffMin",gConfig.light1.offMinutes);
   prefs.putBool("l1Auto",  gConfig.light1.enabled);
 
   prefs.putInt ("l2OnMin", gConfig.light2.onMinutes);
-  prefs.putInt ("l2OffMin", gConfig.light2.offMinutes);
+  prefs.putInt ("l2OffMin",gConfig.light2.offMinutes);
   prefs.putBool("l2Auto",  gConfig.light2.enabled);
 
   prefs.putBool("autoFan",  gConfig.autoFan);
@@ -315,12 +329,38 @@ void updateControlLogic() {
     }
   }
 
-  // Fan (auto by temperature)
-  if (gConfig.autoFan && !isnan(gSensors.temperatureC)) {
-    if (!gRelays.fan && gSensors.temperatureC >= gConfig.env.fanOnTemp) {
-      gRelays.fan = true;
-    } else if (gRelays.fan && gSensors.temperatureC <= gConfig.env.fanOffTemp) {
-      gRelays.fan = false;
+  // Fan (auto by temperature OR humidity)
+  if (gConfig.autoFan) {
+    bool haveTemp = !isnan(gSensors.temperatureC);
+    bool haveHum  = !isnan(gSensors.humidityRH);
+
+    bool hot   = false;
+    bool cool  = false;
+    bool humid = false;
+    bool dry   = false;
+
+    if (haveTemp) {
+      hot  = (gSensors.temperatureC >= gConfig.env.fanOnTemp);
+      cool = (gSensors.temperatureC <= gConfig.env.fanOffTemp);
+    }
+    if (haveHum) {
+      humid = ((int)gSensors.humidityRH >= gConfig.env.fanHumOn);
+      dry   = ((int)gSensors.humidityRH <= gConfig.env.fanHumOff);
+    }
+
+    if (!gRelays.fan) {
+      // Turn fan ON if temperature OR humidity exceed ON thresholds
+      if ((haveTemp && hot) || (haveHum && humid)) {
+        gRelays.fan = true;
+      }
+    } else {
+      // Turn fan OFF when BOTH are back in safe range (or missing)
+      bool tempOk = !haveTemp || cool;
+      bool humOk  = !haveHum  || dry;
+
+      if (tempOk && humOk) {
+        gRelays.fan = false;
+      }
     }
   }
 

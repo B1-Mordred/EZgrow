@@ -14,6 +14,8 @@ struct LightSchedule {
 struct EnvConfig {
   float         fanOnTemp;        // °C
   float         fanOffTemp;       // °C
+  int           fanHumOn;         // %RH - fan ON humidity threshold
+  int           fanHumOff;        // %RH - fan OFF humidity threshold
   int           soilDryThreshold; // %
   int           soilWetThreshold; // %
   unsigned long pumpMinOffSec;    // seconds
@@ -81,7 +83,7 @@ void updateTime();
 // Read sensors (SHT40 + HD38) into gSensors
 void updateSensors();
 
-// Apply automatic control for lights (schedules), fan (temp), pump (soil)
+// Apply automatic control for lights (schedules), fan (temp+humidity), pump (soil)
 void updateControlLogic();
 
 // Update WE-DA-361 OLED display

@@ -3,6 +3,7 @@
 
 #include <WebServer.h>
 #include <LittleFS.h>
+#include <WiFi.h>
 
 // Single global web server (port 80)
 static WebServer server(80);
@@ -76,6 +77,144 @@ static void handleChartJs() {
   f.close();
 }
 
+// ================= Wi-Fi configuration page =================
+
+static void handleWifiConfigGet() {
+  String storedSsid, storedPass;
+  loadWifiCredentials(storedSsid, storedPass);
+
+  // Scan Wi-Fi networks
+  int n = WiFi.scanNetworks();
+  Serial.print("[WiFi] Scan found ");
+  Serial.print(n);
+  Serial.println(" networks");
+
+  String page;
+  page.reserve(9000);
+
+  page += "<!DOCTYPE html><html><head><meta charset='utf-8'>";
+  page += "<meta name='viewport' content='width=device-width,initial-scale=1'>";
+  page += "<title>Wi-Fi Configuration</title>";
+  page += "<style>";
+  page += "body{font-family:sans-serif;margin:1rem;}";
+  page += "label{display:block;margin-top:0.5rem;}";
+  page += "input{width:100%;max-width:280px;padding:0.2rem;}";
+  page += "button{padding:0.4rem 0.8rem;margin-top:0.5rem;}";
+  page += ".card{border:1px solid #ccc;padding:0.5rem;margin-bottom:0.5rem;border-radius:4px;}";
+  page += "table{border-collapse:collapse;width:100%;}";
+  page += "th,td{border:1px solid #ccc;padding:0.3rem;font-size:0.9rem;}";
+  page += "tr.ssid-row:hover{background:#eef;cursor:pointer;}";
+  page += "</style>";
+  page += "<script>";
+  page += "function setSsid(v){ document.getElementById('ssid').value=v; }";
+  page += "</script>";
+  page += "</head><body>";
+
+  page += "<h1>Wi-Fi Settings</h1>";
+  page += "<p><a href='/'><button>Back</button></a></p>";
+
+  // Current connection status
+  page += "<div class='card'><h2>Current connection</h2><p>";
+  wl_status_t st = WiFi.status();
+  if (st == WL_CONNECTED) {
+    page += "Connected to <b>";
+    page += WiFi.SSID();
+    page += "</b> (RSSI ";
+    page += String(WiFi.RSSI());
+    page += " dBm), IP ";
+    page += WiFi.localIP().toString();
+  } else {
+    page += "Not connected.";
+  }
+  page += "</p></div>";
+
+  // Config form
+  page += "<div class='card'><h2>Configure Wi-Fi</h2>";
+  page += "<form method='POST' action='/wifi'>";
+  page += "<label>SSID:<br>";
+  page += "<input type='text' id='ssid' name='ssid' value='";
+  page += storedSsid;
+  page += "'></label>";
+  page += "<label>Password:<br>";
+  page += "<input type='password' name='pass' value='";
+  page += storedPass;
+  page += "'></label>";
+  page += "<p><small>Password is stored in ESP32 NVS (not encrypted). "
+          "After saving, the device will reboot and try to connect.</small></p>";
+  page += "<button type='submit'>Save &amp; Reboot</button>";
+  page += "</form></div>";
+
+  // Scan results
+  page += "<div class='card'><h2>Available networks</h2>";
+  if (n <= 0) {
+    page += "<p>No networks found.</p>";
+  } else {
+    page += "<p>Click a row to copy SSID into the form.</p>";
+    page += "<table><tr><th>SSID</th><th>RSSI (dBm)</th><th>Enc</th></tr>";
+    for (int i = 0; i < n; ++i) {
+      String ssid = WiFi.SSID(i);
+      int32_t rssi = WiFi.RSSI(i);
+      wifi_auth_mode_t enc = WiFi.encryptionType(i);
+
+      page += "<tr class='ssid-row' onclick=\"setSsid('";
+      // escape single quotes in SSID
+      String esc = ssid;
+      esc.replace("'", "\\'");
+      page += esc;
+      page += "')\"><td>";
+      page += ssid;
+      page += "</td><td>";
+      page += String(rssi);
+      page += "</td><td>";
+      if (enc == WIFI_AUTH_OPEN) page += "open";
+      else page += "secured";
+      page += "</td></tr>";
+    }
+    page += "</table>";
+  }
+  page += "</div>";
+
+  page += "</body></html>";
+
+  server.send(200, "text/html", page);
+
+  // Free scan results
+  WiFi.scanDelete();
+}
+
+static void handleWifiConfigPost() {
+  if (!server.hasArg("ssid")) {
+    server.send(400, "text/plain", "Missing ssid");
+    return;
+  }
+
+  String ssid = server.arg("ssid");
+  String pass = server.hasArg("pass") ? server.arg("pass") : "";
+
+  ssid.trim();
+  pass.trim();
+
+  saveWifiCredentials(ssid, pass);
+
+  String page;
+  page.reserve(1024);
+  page += "<!DOCTYPE html><html><head><meta charset='utf-8'>";
+  page += "<meta name='viewport' content='width=device-width,initial-scale=1'>";
+  page += "<title>Wi-Fi Saved</title></head><body>";
+  page += "<h1>Wi-Fi configuration saved</h1>";
+  page += "<p>SSID: <b>";
+  page += ssid;
+  page += "</b></p>";
+  page += "<p>The device will reboot now and attempt to connect.</p>";
+  page += "</body></html>";
+
+  server.send(200, "text/html", page);
+
+  // Small delay to allow the response to be sent
+  delay(500);
+  ESP.restart();
+}
+
 // ================= Status page (/) =================
 
 static void handleRoot() {
@@ -99,6 +238,7 @@ static void handleRoot() {
 
   page += "<h1>Greenhouse Controller</h1>";
   page += "<p><a class='btn' href='/config'><button>Configuration</button></a></p>";
+  page += "<p><a class='btn' href='/wifi'><button>Wi-Fi Settings</button></a></p>";
 
   if (timeAvail) {
     char buf[32];
@@ -218,8 +358,8 @@ static void handleRoot() {
   // Light chart
   page += "const ctx2=document.getElementById('lightChart').getContext('2d');";
   page += "new Chart(ctx2,{type:'line',data:{labels:labels,datasets:[";
-  page += "{label:'Light 1',data:l1,step:true,borderColor:'green',backgroundColor:'rgba(0,255,0,0.1)'},";
-  page += "{label:'Light 2',data:l2,step:true,borderColor:'orange',backgroundColor:'rgba(255,165,0,0.1)'}";
+  page += "{label:'Light 1',data:l1,stepped:true,borderColor:'green',backgroundColor:'rgba(0,255,0,0.1)'},";
+  page += "{label:'Light 2',data:l2,stepped:true,borderColor:'orange',backgroundColor:'rgba(255,165,0,0.1)'}";
   page += "]},options:{responsive:true,interaction:{mode:'index',intersect:false},plugins:{legend:{display:true}},scales:{";
   page += "y:{min:-0.1,max:1.1,ticks:{stepSize:1},title:{display:true,text:'Light state (0=OFF,1=ON)'}},";
   page += "x:{ticks:{maxTicksLimit:12}}";
@@ -424,13 +564,15 @@ static void handleConfigPost() {
 // ================= Public API =================
 
 void initWebServer() {
-  server.on("/",           HTTP_GET,  handleRoot);
-  server.on("/toggle",     HTTP_GET,  handleToggle);
-  server.on("/mode",       HTTP_GET,  handleMode);
-  server.on("/config",     HTTP_GET,  handleConfigGet);
-  server.on("/config",     HTTP_POST, handleConfigPost);
-  server.on("/api/history",HTTP_GET,  handleHistoryApi);
-  server.on("/chart.umd.min.js", HTTP_GET, handleChartJs);
+  server.on("/",                HTTP_GET,  handleRoot);
+  server.on("/toggle",          HTTP_GET,  handleToggle);
+  server.on("/mode",            HTTP_GET,  handleMode);
+  server.on("/config",          HTTP_GET,  handleConfigGet);
+  server.on("/config",          HTTP_POST, handleConfigPost);
+  server.on("/api/history",     HTTP_GET,  handleHistoryApi);
+  server.on("/chart.umd.min.js",HTTP_GET,  handleChartJs);
+  server.on("/wifi",            HTTP_GET,  handleWifiConfigGet);
+  server.on("/wifi",            HTTP_POST, handleWifiConfigPost);
 
   server.begin();
 }

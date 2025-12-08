@@ -25,8 +25,9 @@ static const bool RELAY_ACTIVE_LEVEL   = LOW;
 static const bool RELAY_INACTIVE_LEVEL = HIGH;
 
 // ================= WIFI + NTP CONFIG =================
-static const char* WIFI_SSID = "YOUR_SSID";      // TODO: adjust
-static const char* WIFI_PASS = "YOUR_PASSWORD";  // TODO: adjust
+// Compile-time defaults (used only if no NVS credentials found)
+static const char* DEFAULT_WIFI_SSID = "YOUR_SSID";
+static const char* DEFAULT_WIFI_PASS = "YOUR_PASSWORD";
 
 static const char* NTP_SERVER1 = "pool.ntp.org";
 static const char* NTP_SERVER2 = "time.nist.gov";
@@ -113,6 +114,46 @@ bool greenhouseGetTime(struct tm &outTime, bool &available) {
   outTime   = gTimeInfo;
   available = gTimeAvailable;
   return gTimeAvailable;
+}
+
+// ================= Wi-Fi credentials (NVS) =================
+
+void loadWifiCredentials(String &ssidOut, String &passOut) {
+  ssidOut = "";
+  passOut = "";
+
+  if (!prefs.begin("gh_wifi", true)) {
+    Serial.println("[WiFiCFG] Preferences begin failed (read)");
+  } else {
+    String s = prefs.getString("ssid", "");
+    String p = prefs.getString("pass", "");
+    prefs.end();
+    ssidOut = s;
+    passOut = p;
+  }
+
+  // Fallback to compile-time defaults if no SSID stored
+  if (ssidOut.isEmpty() && DEFAULT_WIFI_SSID && strlen(DEFAULT_WIFI_SSID) > 0) {
+    ssidOut = DEFAULT_WIFI_SSID;
+    passOut = DEFAULT_WIFI_PASS ? DEFAULT_WIFI_PASS : "";
+  }
+
+  Serial.print("[WiFiCFG] Using SSID: ");
+  Serial.println(ssidOut);
+}
+
+void saveWifiCredentials(const String &ssid, const String &password) {
+  if (!prefs.begin("gh_wifi", false)) {
+    Serial.println("[WiFiCFG] Preferences begin failed (write)");
+    return;
+  }
+
+  prefs.putString("ssid", ssid);
+  prefs.putString("pass", password);
+  prefs.end();
+
+  Serial.print("[WiFiCFG] Saved SSID: ");
+  Serial.println(ssid);
 }
 
 // ================= Config load/save =================
@@ -298,8 +339,8 @@ void updateControlLogic() {
       }
     } else {
       if (wetEnough || (nowMs - pumpStartMs > gConfig.env.pumpMaxOnSec * 1000UL)) {
-        pumpRunning   = false;
-        gRelays.pump  = false;
+        pumpRunning    = false;
+        gRelays.pump   = false;
         lastPumpStopMs = nowMs;
       }
     }
@@ -429,29 +470,51 @@ void initHardware() {
   u8g2.drawStr(0, 10, "Greenhouse boot...");
   u8g2.sendBuffer();
 
+  // Wi-Fi credentials from NVS (or defaults)
+  String ssid, pass;
+  loadWifiCredentials(ssid, pass);
+
   // Wi-Fi
   WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
+  if (!ssid.isEmpty()) {
+    Serial.print("[WiFi] Connecting to ");
+    Serial.println(ssid);
+    WiFi.begin(ssid.c_str(), pass.c_str());
+  } else {
+    Serial.println("[WiFi] No SSID configured");
+  }
+
+  unsigned long start = millis();
   Serial.print("[WiFi] Connecting");
-  while (WiFi.status() != WL_CONNECTED) {
+  while (WiFi.status() != WL_CONNECTED && (millis() - start) < 15000) {
     delay(500);
     Serial.print(".");
   }
   Serial.println();
-  Serial.print("[WiFi] IP: ");
-  Serial.println(WiFi.localIP());
+
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.print("[WiFi] Connected, IP: ");
+    Serial.println(WiFi.localIP());
+
+    // Show IP on display
+    u8g2.clearBuffer();
+    u8g2.setCursor(0, 10);
+    u8g2.print("IP:");
+    u8g2.setCursor(0, 20);
+    u8g2.print(WiFi.localIP().toString().c_str());
+    u8g2.sendBuffer();
+    delay(2000);
+  } else {
+    Serial.println("[WiFi] Failed to connect");
+    u8g2.clearBuffer();
+    u8g2.setCursor(0, 10);
+    u8g2.print("WiFi not conn.");
+    u8g2.sendBuffer();
+    delay(2000);
+  }
 
   // NTP / time zone
   setenv("TZ", TZ_INFO, 1);
   tzset();
   configTime(0, 0, NTP_SERVER1, NTP_SERVER2);
-
-  // Show IP on display
-  u8g2.clearBuffer();
-  u8g2.setCursor(0, 10);
-  u8g2.print("IP:");
-  u8g2.setCursor(0, 20);
-  u8g2.print(WiFi.localIP().toString().c_str());
-  u8g2.sendBuffer();
-  delay(2000);
 }

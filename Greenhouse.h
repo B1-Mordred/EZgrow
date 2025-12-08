@@ -12,20 +12,20 @@ struct LightSchedule {
 };
 
 struct EnvConfig {
-  float fanOnTemp;        // °C
-  float fanOffTemp;       // °C
-  int   soilDryThreshold; // %
-  int   soilWetThreshold; // %
-  unsigned long pumpMinOffSec; // seconds
-  unsigned long pumpMaxOnSec;  // seconds
+  float         fanOnTemp;        // °C
+  float         fanOffTemp;       // °C
+  int           soilDryThreshold; // %
+  int           soilWetThreshold; // %
+  unsigned long pumpMinOffSec;    // seconds
+  unsigned long pumpMaxOnSec;     // seconds
 };
 
 struct GreenhouseConfig {
   EnvConfig     env;
   LightSchedule light1;
   LightSchedule light2;
-  bool autoFan;
-  bool autoPump;
+  bool          autoFan;
+  bool          autoPump;
 };
 
 // ========== Runtime state structures ==========
@@ -54,8 +54,8 @@ struct HistorySample {
 };
 
 // History configuration
-constexpr size_t HISTORY_SIZE         = 1440;                 // 1 day @ 1-min interval
-constexpr unsigned long HISTORY_INTERVAL_MS = 60UL * 1000UL;  // 1 minute
+constexpr size_t        HISTORY_SIZE          = 1440;                // 1 day @ 1-min interval
+constexpr unsigned long HISTORY_INTERVAL_MS   = 60UL * 1000UL;       // 1 minute
 
 // ========== Global config/state (defined in Greenhouse.cpp) ==========
 
@@ -99,3 +99,12 @@ String minutesToTimeStr(int minutes);
 
 // Check if, for a schedule, the light should be ON at nowMinutes
 bool scheduleIsOn(int onMin, int offMin, int nowMin);
+
+// ========== Wi-Fi credentials storage (NVS) ==========
+
+// Load Wi-Fi credentials from NVS; falls back to compiled defaults if empty.
+// Outputs into ssidOut and passOut.
+void loadWifiCredentials(String &ssidOut, String &passOut);
+
+// Save Wi-Fi credentials to NVS.
+void saveWifiCredentials(const String &ssid, const String &password);

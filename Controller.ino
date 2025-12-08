@@ -7,7 +7,7 @@ void setup() {
   delay(500);
 
   initHardware();   // pins, LittleFS, config, WiFi, time, sensors, display
-  initWebServer();  // HTTP server + routes (incl. offline Chart.js)
+  initWebServer();  // HTTP server + routes (incl. offline Chart.js + Wi-Fi config)
 }
 
 void loop() {

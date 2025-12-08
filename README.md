@@ -1,4 +1,4 @@
-# ESP32 Greenhouse Controller (ESP32-4R-A2, Multi-file, LittleFS)
+# ESP32 Greenhouse Controller (ESP32-4R-A2, Multi-file, LittleFS, Wi-Fi Config + AP Fallback)
 
 This project implements a greenhouse controller based on the **ESP32-4R-A2** relay board.
 
@@ -18,14 +18,20 @@ It displays status on a small **0.91" WE-DA-361 I²C OLED** and exposes a web UI
 - Dashboard (live sensors, relay states, modes)  
 - Configuration (thresholds, timings, light schedules)  
 - History charts (temperature, humidity, light states)  
+- **Wi-Fi configuration** (scan SSIDs, select, store SSID/password in NVS)  
 
 All charts work **offline**, using **LittleFS** to serve Chart.js from the ESP32.
+
+The device supports:
+
+- **Station (STA) mode**: connects to your existing Wi-Fi network.  
+- **Access Point (AP) fallback**: starts `EZgrow-Setup` AP if STA connection fails or no SSID is configured.
 
 ---
 
 ## Quick Start
 
-1. **Clone or create the project folder**
+1. **Create the project folder**
 
    ```text
    controller/
@@ -52,42 +58,78 @@ All charts work **offline**, using **LittleFS** to serve Chart.js from the ESP32
    - `Adafruit Unified Sensor`
    - `U8g2`
 
-4. **Configure Wi-Fi credentials**
+4. **Download Chart.js and place it in `data/`**
 
-   - Open `Greenhouse.cpp`.
-   - Locate:
+   - Download a recent **Chart.js 4 UMD build** (e.g. from JSDelivr).
+   - Save it as:
 
-     ```cpp
-     static const char* WIFI_SSID = "YOUR_SSID";
-     static const char* WIFI_PASS = "YOUR_PASSWORD";
+     ```text
+     controller/data/chart.umd.min.js
      ```
 
-   - Replace with your actual Wi-Fi SSID and password.
+5. **Optional: Set compile-time default Wi-Fi (bootstrap only)**
 
-5. **Upload LittleFS data**
+   In `Greenhouse.cpp`, you can set initial default credentials:
+
+   ```cpp
+   static const char* DEFAULT_WIFI_SSID = "YOUR_SSID";
+   static const char* DEFAULT_WIFI_PASS = "YOUR_PASSWORD";
+   ```
+
+   These are **only used if no Wi-Fi credentials are stored in NVS**.  
+   Once you save SSID/password via the `/wifi` page, those NVS values override defaults.
+
+6. **Upload LittleFS data**
 
    - Install the **ESP32 LittleFS Data Upload** plugin for Arduino IDE (if not already installed).
-   - In Arduino IDE, select the `controller` sketch.
+   - In Arduino IDE, open the `controller` sketch.
    - Use the **“ESP32 LittleFS Data Upload”** menu to upload the `data/` folder to the ESP32.
 
-6. **Compile and upload the firmware**
+7. **Compile and upload the firmware**
 
    - Click **Verify** to compile.
    - Click **Upload** to flash the ESP32-4R-A2.
 
-7. **Connect to the web UI**
+8. **First-time Wi-Fi setup**
 
-   - Open the Serial Monitor at **115200 baud**.
-   - After boot, note the IP address printed (and briefly shown on the OLED).
-   - On a device in the same network, open a browser and navigate to:
+   After boot, one of two things will happen:
+
+   ### 8.1 If valid Wi-Fi credentials are available
+
+   - The ESP32 connects to your network.
+   - The IP address is:
+     - Printed to the Serial Monitor (115200 baud).
+     - Shown briefly on the OLED.
+
+   **Open the dashboard**:
+
+   ```text
+   http://<esp32-ip-address>/
+   ```
+
+   - `/` : dashboard and charts
+   - `/config` : control thresholds, timings, schedules
+   - `/wifi` : Wi-Fi configuration (scan, select SSID, save)
+
+   ### 8.2 If connection fails or no SSID configured
+
+   - The ESP32 starts an **access point (AP)**:
+
+     - SSID: `EZgrow-Setup`  
+     - Password: _empty_ (open AP, set a password in the code if desired)
+
+   - Connect your phone or laptop to `EZgrow-Setup`.
+   - Open:
 
      ```text
-     http://<esp32-ip-address>/
+     http://192.168.4.1/wifi
      ```
 
-   - Use:
-     - `/` for the dashboard and charts.
-     - `/config` to adjust thresholds, timings, and schedules.
+   - On the **Wi-Fi page**:
+     - Click a network in the table to populate the SSID.
+     - Enter your Wi-Fi password.
+     - Save.
+   - The device will **reboot** and attempt to connect to the selected Wi-Fi network.
 
 ---
 
@@ -122,6 +164,18 @@ All charts work **offline**, using **LittleFS** to serve Chart.js from the ESP32
     - In **MANUAL** mode with direct toggling via web UI.
   - Schedules allow intervals that cross midnight (e.g. 20:00–06:00).
 
+### Network Modes
+
+- **STA (station) mode**:
+  - Connects to an existing Wi-Fi network using SSID/password stored in **NVS**.
+  - Shows assigned IP on Serial and OLED.
+
+- **AP fallback**:
+  - If STA connection fails, or no SSID is configured:
+    - Starts AP `EZgrow-Setup` (open by default).
+    - AP IP is typically `192.168.4.1`.
+    - Wi-Fi setup is done via `/wifi`.
+
 ### Web Interface
 
 - **Dashboard (`/`)**:
@@ -133,6 +187,8 @@ All charts work **offline**, using **LittleFS** to serve Chart.js from the ESP32
   - History charts:
     - Temperature and humidity (line chart).
     - Light 1 and Light 2 states (step chart).
+  - Link to `/wifi` for network configuration.
+
 - **Configuration (`/config`)**:
   - Fan ON temperature (°C).
   - Fan OFF temperature (°C).
@@ -141,12 +197,24 @@ All charts work **offline**, using **LittleFS** to serve Chart.js from the ESP32
   - Pump maximum ON time (s).
   - Light 1/2 schedules (ON/OFF time + “use schedule” flags).
   - AUTO/MANUAL for fan and pump.
+
+- **Wi-Fi configuration (`/wifi`)**:
+  - Lists available SSIDs (scanned with `WiFi.scanNetworks()`).
+  - Shows current connection (if any).
+  - Form:
+    - SSID (clicking a row in the table fills this).
+    - Password.
+  - On submit:
+    - Credentials are saved to NVS.
+    - Device reboots and attempts connection with new credentials.
+
 - **History API (`/api/history`)**:
   - JSON feed of the last 24 hours (1 point per minute) with:
     - Timestamp.
     - Temperature.
     - Humidity.
     - Light 1/2 states.
+
 - **Static asset from LittleFS**:
   - `/chart.umd.min.js` – Chart.js UMD bundle served from LittleFS for offline charts.
 
@@ -165,6 +233,7 @@ All charts work **offline**, using **LittleFS** to serve Chart.js from the ESP32
   - Pump timings.
   - Light 1/2 schedules and enabled flags.
   - Fan and pump AUTO/MAN flags.
+  - Wi-Fi SSID and password.
 - Settings are reloaded at boot; no recompile needed to adjust behaviour.
 
 ---
@@ -175,9 +244,9 @@ All charts work **offline**, using **LittleFS** to serve Chart.js from the ESP32
 controller/
   controller.ino        # Main entry point (setup/loop)
   Greenhouse.h          # Config/state structs, function declarations
-  Greenhouse.cpp        # Hardware init, sensors, control logic, history
+  Greenhouse.cpp        # Hardware init, sensors, control logic, Wi-Fi/AP, history
   WebUI.h               # Web server API declarations
-  WebUI.cpp             # HTTP routes, HTML, config UI, charts
+  WebUI.cpp             # HTTP routes, HTML, config UI, Wi-Fi UI, charts
 
   data/
     chart.umd.min.js    # Chart.js UMD bundle (served via LittleFS)
@@ -274,8 +343,9 @@ Main interface:
 - History charts:
   - **Temperature & Humidity** (line chart, dual axis).
   - **Light 1 & Light 2** (step-like 0/1 chart).
-
-Charts are rendered with Chart.js loaded locally from `/chart.umd.min.js`.
+- Direct links to:
+  - `/config` (greenhouse logic)
+  - `/wifi` (network config)
 
 ### 4.2 Configuration (`/config`)
 
@@ -301,7 +371,29 @@ On submit:
 - Configuration is saved to NVS (via `Preferences`).
 - New values are applied immediately (no reboot required).
 
-### 4.3 Control endpoints
+### 4.3 Wi-Fi configuration (`/wifi`)
+
+- **Current connection**:
+  - Shows whether the ESP32 is connected and to which SSID.
+  - Shows current IP and RSSI.
+
+- **SSID/password form**:
+  - SSID (`<input type="text">`).
+  - Password (`<input type="password">`).
+  - Credentials persist in NVS (`gh_wifi` namespace).
+
+- **Network scan**:
+  - Table of nearby SSIDs, RSSI, and encryption type (open / secured).
+  - Clicking a row populates the SSID field.
+
+On submit:
+
+- SSID/password are stored in NVS.
+- Device responds with a simple “saved” page.
+- After a short delay, the device **restarts**.
+- On next boot, the device attempts STA connection using the saved credentials.
+
+### 4.4 Control endpoints
 
 - `GET /toggle?id=light1|light2|fan|pump`  
   Toggles the specified relay **only if** that device is in MANUAL mode.
@@ -311,7 +403,7 @@ On submit:
   - For lights: toggles use of schedule (AUTO) vs manual relay control.
   - For fan/pump: toggles automatic control logic vs manual relay control.
 
-### 4.4 History API (`/api/history`)
+### 4.5 History API (`/api/history`)
 
 - Returns a JSON payload containing an array of historical points for the last 24 hours, one per minute.
 - Used by the dashboard’s JavaScript to render charts.
@@ -376,10 +468,12 @@ Where:
 - `x` = `1` (ON) or `0` (OFF).
 - `A` = AUTO / `M` = MANUAL.
 
-At boot, the OLED briefly shows:
+On boot:
 
-- `"Greenhouse boot..."`, then
-- The ESP32’s IP address (for convenience to open the web UI).
+- Initially: `"Greenhouse boot..."`.
+- Then:
+  - If STA connected: IP address of the ESP32.
+  - If AP fallback: AP SSID (`EZgrow-Setup`) and AP IP (e.g. `192.168.4.1`).
 
 ---
 
@@ -422,6 +516,8 @@ These can be tuned in the config UI to better fit your greenhouse.
 - The controller uses **HTTP without authentication** by default.
 - Recommended precautions:
   - Keep it on a local network, not directly exposed to the internet.
+  - For AP mode, you may want to configure a password in `initHardware()`:
+    - Set a non-empty password for `WiFi.softAP(apSsid, apPass)`.
   - If needed:
     - Put it behind a firewall or in a separate VLAN.
     - Use a reverse proxy with HTTPS and optional authentication.
@@ -431,8 +527,7 @@ These can be tuned in the config UI to better fit your greenhouse.
 
 ## 9. Possible Extensions
 
-- Web-based Wi-Fi configuration (store SSID/password in NVS).
-- Add HTTP Basic Auth / token-based auth for `/config` and `/toggle`/`/mode`.
+- Add HTTP Basic Auth / token-based auth for `/config`, `/wifi`, `/toggle`, and `/mode`.
 - MQTT integration (for Home Assistant, etc.).
 - Long-term data logging to SD card or an external database.
 - Additional sensors:
@@ -440,15 +535,18 @@ These can be tuned in the config UI to better fit your greenhouse.
   - Light intensity
   - Pressure, etc.
 - BLE / Bluetooth-based control UI.
+- Captive portal for Wi-Fi onboarding (redirect to `/wifi` when connected to AP).
 
 ---
 
 ## 10. License
 
+Choose an appropriate license for your project (for example, MIT):
+
 ```text
 MIT License
 
-Copyright (c) 2025 MHn
+Copyright (c) 2025 Marco Horstmann
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

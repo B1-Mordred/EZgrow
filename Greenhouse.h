@@ -54,8 +54,8 @@ struct HistorySample {
 };
 
 // History configuration
-constexpr size_t        HISTORY_SIZE          = 1440;                // 1 day @ 1-min interval
-constexpr unsigned long HISTORY_INTERVAL_MS   = 60UL * 1000UL;       // 1 minute
+constexpr size_t        HISTORY_SIZE        = 1440;          // 1 day @ 1-min interval
+constexpr unsigned long HISTORY_INTERVAL_MS = 60UL * 1000UL; // 1 minute
 
 // ========== Global config/state (defined in Greenhouse.cpp) ==========
 
@@ -72,7 +72,7 @@ bool greenhouseGetTime(struct tm &outTime, bool &available);
 
 // ========== Hardware / logic API ==========
 
-// Initialize pins, LittleFS, config, WiFi, NTP, sensors, display
+// Initialize pins, LittleFS, config, WiFi (with AP fallback), NTP, sensors, display
 void initHardware();
 
 // Periodically update time from system clock (uses NTP in background)

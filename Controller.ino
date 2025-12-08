@@ -6,7 +6,7 @@ void setup() {
   Serial.begin(115200);
   delay(500);
 
-  initHardware();   // pins, LittleFS, config, WiFi, time, sensors, display
+  initHardware();   // pins, LittleFS, config, WiFi + AP fallback, time, sensors, display
   initWebServer();  // HTTP server + routes (incl. offline Chart.js + Wi-Fi config)
 }
 

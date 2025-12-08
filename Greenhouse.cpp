@@ -430,7 +430,7 @@ void logHistorySample() {
   }
 }
 
-// ================= Hardware init =================
+// ================= Hardware init (with AP fallback) =================
 
 void initHardware() {
   // GPIO
@@ -474,41 +474,78 @@ void initHardware() {
   String ssid, pass;
   loadWifiCredentials(ssid, pass);
 
-  // Wi-Fi
-  WiFi.mode(WIFI_STA);
+  // Wi-Fi AP+STA mode for AP fallback
+  WiFi.mode(WIFI_AP_STA);
+
+  bool staConnected = false;
+
   if (!ssid.isEmpty()) {
     Serial.print("[WiFi] Connecting to ");
     Serial.println(ssid);
     WiFi.begin(ssid.c_str(), pass.c_str());
+
+    unsigned long start = millis();
+    Serial.print("[WiFi] Connecting");
+    while (WiFi.status() != WL_CONNECTED && (millis() - start) < 15000) {
+      delay(500);
+      Serial.print(".");
+    }
+    Serial.println();
+
+    if (WiFi.status() == WL_CONNECTED) {
+      staConnected = true;
+      Serial.print("[WiFi] Connected, IP: ");
+      Serial.println(WiFi.localIP());
+    } else {
+      Serial.println("[WiFi] STA connect failed");
+    }
   } else {
     Serial.println("[WiFi] No SSID configured");
   }
 
-  unsigned long start = millis();
-  Serial.print("[WiFi] Connecting");
-  while (WiFi.status() != WL_CONNECTED && (millis() - start) < 15000) {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println();
+  if (!staConnected) {
+    // Start configuration AP
+    const char* apSsid = "EZgrow-Setup";
+    const char* apPass = ""; // open AP; set a password if you prefer
 
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.print("[WiFi] Connected, IP: ");
-    Serial.println(WiFi.localIP());
+    bool apRes;
+    if (strlen(apPass) > 0) {
+      apRes = WiFi.softAP(apSsid, apPass);
+    } else {
+      apRes = WiFi.softAP(apSsid);
+    }
 
-    // Show IP on display
+    if (apRes) {
+      IPAddress apIP = WiFi.softAPIP();
+      Serial.print("[WiFi] AP started: ");
+      Serial.print(apSsid);
+      Serial.print(" IP=");
+      Serial.println(apIP);
+
+      u8g2.clearBuffer();
+      u8g2.setCursor(0, 10);
+      u8g2.print("AP:");
+      u8g2.setCursor(0, 20);
+      u8g2.print(apSsid);
+      u8g2.setCursor(0, 30);
+      u8g2.print(apIP.toString().c_str());
+      u8g2.sendBuffer();
+      delay(2000);
+    } else {
+      Serial.println("[WiFi] AP start failed");
+      u8g2.clearBuffer();
+      u8g2.setCursor(0, 10);
+      u8g2.print("WiFi/AP failed");
+      u8g2.sendBuffer();
+      delay(2000);
+    }
+  } else {
+    // Show STA IP on display
     u8g2.clearBuffer();
     u8g2.setCursor(0, 10);
     u8g2.print("IP:");
     u8g2.setCursor(0, 20);
     u8g2.print(WiFi.localIP().toString().c_str());
-    u8g2.sendBuffer();
-    delay(2000);
-  } else {
-    Serial.println("[WiFi] Failed to connect");
-    u8g2.clearBuffer();
-    u8g2.setCursor(0, 10);
-    u8g2.print("WiFi not conn.");
     u8g2.sendBuffer();
     delay(2000);
   }

@@ -564,15 +564,15 @@ static void handleConfigPost() {
 // ================= Public API =================
 
 void initWebServer() {
-  server.on("/",                HTTP_GET,  handleRoot);
-  server.on("/toggle",          HTTP_GET,  handleToggle);
-  server.on("/mode",            HTTP_GET,  handleMode);
-  server.on("/config",          HTTP_GET,  handleConfigGet);
-  server.on("/config",          HTTP_POST, handleConfigPost);
-  server.on("/api/history",     HTTP_GET,  handleHistoryApi);
-  server.on("/chart.umd.min.js",HTTP_GET,  handleChartJs);
-  server.on("/wifi",            HTTP_GET,  handleWifiConfigGet);
-  server.on("/wifi",            HTTP_POST, handleWifiConfigPost);
+  server.on("/",                 HTTP_GET,  handleRoot);
+  server.on("/toggle",           HTTP_GET,  handleToggle);
+  server.on("/mode",             HTTP_GET,  handleMode);
+  server.on("/config",           HTTP_GET,  handleConfigGet);
+  server.on("/config",           HTTP_POST, handleConfigPost);
+  server.on("/api/history",      HTTP_GET,  handleHistoryApi);
+  server.on("/chart.umd.min.js", HTTP_GET,  handleChartJs);
+  server.on("/wifi",             HTTP_GET,  handleWifiConfigGet);
+  server.on("/wifi",             HTTP_POST, handleWifiConfigPost);
 
   server.begin();
 }

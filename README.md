@@ -587,7 +587,7 @@ These can be tuned in the config UI to better fit your greenhouse.
 - Additional sensors:
   - CO₂
   - Light intensity
-  - Pressure, etc.
+  - ...
 - BLE / Bluetooth-based control UI.
 
 ---

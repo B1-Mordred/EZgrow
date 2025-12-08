@@ -310,8 +310,10 @@ static void handleRoot() {
   page += "</p>";
 
   page += "<p><small>Fan: ON &ge; " + String(gConfig.env.fanOnTemp, 1) +
-          " &deg;C, OFF &le; " + String(gConfig.env.fanOffTemp, 1) +
-          " &deg;C. Pump: dry &lt; " + String(gConfig.env.soilDryThreshold) +
+          " &deg;C or &ge; " + String(gConfig.env.fanHumOn) +
+          "% RH; OFF when &le; " + String(gConfig.env.fanOffTemp, 1) +
+          " &deg;C and &le; " + String(gConfig.env.fanHumOff) +
+          "% RH. Pump: dry &lt; " + String(gConfig.env.soilDryThreshold) +
           "%, wet &gt; " + String(gConfig.env.soilWetThreshold) + "%.</small></p>";
 
   page += "</div>";
@@ -446,6 +448,12 @@ static void handleConfigGet() {
   page += "<label>Fan OFF temperature (&deg;C):<br>";
   page += "<input type='number' step='0.1' name='fanOff' value='" + String(gConfig.env.fanOffTemp, 1) + "'></label>";
 
+  page += "<label>Fan ON humidity (%RH):<br>";
+  page += "<input type='number' step='1' name='fanHumOn' value='" + String(gConfig.env.fanHumOn) + "'></label>";
+
+  page += "<label>Fan OFF humidity (%RH):<br>";
+  page += "<input type='number' step='1' name='fanHumOff' value='" + String(gConfig.env.fanHumOff) + "'></label>";
+
   page += "<label>Soil DRY threshold (%):<br>";
   page += "<input type='number' step='1' name='soilDry' value='" + String(gConfig.env.soilDryThreshold) + "'></label>";
 
@@ -510,6 +518,19 @@ static void handleConfigPost() {
   if (gConfig.env.fanOffTemp >= gConfig.env.fanOnTemp) {
     gConfig.env.fanOnTemp  = 28.0f;
     gConfig.env.fanOffTemp = 26.0f;
+  }
+
+  if (server.hasArg("fanHumOn")) {
+    int v = server.arg("fanHumOn").toInt();
+    gConfig.env.fanHumOn = constrain(v, 0, 100);
+  }
+  if (server.hasArg("fanHumOff")) {
+    int v = server.arg("fanHumOff").toInt();
+    gConfig.env.fanHumOff = constrain(v, 0, 100);
+  }
+  if (gConfig.env.fanHumOff >= gConfig.env.fanHumOn) {
+    gConfig.env.fanHumOn  = 80;
+    gConfig.env.fanHumOff = 70;
   }
 
   if (server.hasArg("soilDry")) {

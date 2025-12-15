@@ -22,6 +22,13 @@ static String sWebAuthPass;
 static String htmlBool(bool b) { return b ? "ON" : "OFF"; }
 static String htmlAuto(bool a) { return a ? "AUTO" : "MAN"; }
 
+static String minutesToTimeStrSafe(int mins) {
+  mins = constrain(mins, 0, 24 * 60 - 1);
+  char buf[6];
+  sprintf(buf, "%02d:%02d", mins / 60, mins % 60);
+  return String(buf);
+}
+
 // Convert "HH:MM" to minutes since midnight
 static int parseTimeToMinutes(const String &s, int fallback) {
   int colon = s.indexOf(':');
@@ -30,6 +37,44 @@ static int parseTimeToMinutes(const String &s, int fallback) {
   int m = s.substring(colon + 1).toInt();
   if (h < 0 || h > 23 || m < 0 || m > 59) return fallback;
   return h * 60 + m;
+}
+
+static String htmlEscape(const String& in) {
+  String s; s.reserve(in.length() + 8);
+  for (size_t i = 0; i < in.length(); i++) {
+    char c = in[i];
+    switch (c) {
+      case '&': s += "&amp;"; break;
+      case '<': s += "&lt;"; break;
+      case '>': s += "&gt;"; break;
+      case '"': s += "&quot;"; break;
+      case '\'': s += "&#39;"; break;
+      default: s += c; break;
+    }
+  }
+  return s;
+}
+
+static String jsonEscape(const String& in) {
+  String s; s.reserve(in.length() + 8);
+  for (size_t i = 0; i < in.length(); i++) {
+    char c = in[i];
+    switch (c) {
+      case '\\': s += "\\\\"; break;
+      case '"':  s += "\\\""; break;
+      case '\n': s += "\\n"; break;
+      case '\r': s += "\\r"; break;
+      case '\t': s += "\\t"; break;
+      default:
+        if ((uint8_t)c < 0x20) {
+          // skip control chars
+        } else {
+          s += c;
+        }
+        break;
+    }
+  }
+  return s;
 }
 
 // In AP-only (captive portal) mode, we skip authentication so onboarding is open.
@@ -50,6 +95,66 @@ static bool requireAuth() {
     return false;
   }
   return true;
+}
+
+static void streamStaticFile(const char* path, const char* contentType) {
+  File f = LittleFS.open(path, "r");
+  if (!f) {
+    server.send(404, "text/plain", String(path) + " not found");
+    return;
+  }
+  server.streamFile(f, contentType);
+  f.close();
+}
+
+static void beginPage(String& page, const char* title, const char* activeNav, bool includeCharts) {
+  page += "<!DOCTYPE html><html><head><meta charset='utf-8'>";
+  page += "<meta name='viewport' content='width=device-width,initial-scale=1'>";
+  page += "<meta name='theme-color' content='#12a150'>";
+  page += "<title>";
+  page += title;
+  page += "</title>";
+  page += "<link rel='stylesheet' href='/app.css'>";
+  if (includeCharts) page += "<script defer src='/chart.umd.min.js'></script>";
+  page += "<script defer src='/app.js'></script>";
+  page += "</head><body data-page='";
+  page += activeNav;
+  page += "'>";
+
+  // Top bar
+  page += "<div class='topbar'><div class='topbar-inner'>";
+  page += "<div class='brand'>EZgrow</div>";
+
+  page += "<div class='nav'>";
+  if (!sCaptivePortalActive) {
+    page += "<a href='/'";
+    if (String(activeNav) == "dashboard") page += " class='active'";
+    page += ">Dashboard</a>";
+
+    page += "<a href='/config'";
+    if (String(activeNav) == "config") page += " class='active'";
+    page += ">Config</a>";
+  }
+
+  page += "<a href='/wifi'";
+  if (String(activeNav) == "wifi") page += " class='active'";
+  page += ">";
+  page += sCaptivePortalActive ? "Wi-Fi Setup" : "Wi-Fi";
+  page += "</a>";
+  page += "</div>";
+
+  page += "<div class='pills'>";
+  page += "<span class='pill' id='top-time'>—</span>";
+  page += "<span class='pill' id='top-conn'>—</span>";
+  page += "</div>";
+
+  page += "</div></div>";
+
+  page += "<div class='container'>";
+}
+
+static void endPage(String& page) {
+  page += "</div></body></html>";
 }
 
 // ================= History API =================
@@ -96,17 +201,147 @@ static void handleHistoryApi() {
   server.send(200, "application/json", json);
 }
 
-// ================= Static Chart.js from LittleFS =================
+// ================= Status API (new) =================
+
+static void handleStatusApi() {
+  if (!requireAuth()) return;
+
+  struct tm nowTime;
+  bool timeAvail;
+  greenhouseGetTime(nowTime, timeAvail);
+
+  String timeStr = "syncing…";
+  if (timeAvail) {
+    char buf[16];
+    sprintf(buf, "%02d:%02d:%02d", nowTime.tm_hour, nowTime.tm_min, nowTime.tm_sec);
+    timeStr = buf;
+  }
+
+  bool connected = (WiFi.status() == WL_CONNECTED);
+  String modeStr = connected ? "STA" : ((WiFi.getMode() & WIFI_MODE_AP) ? "AP" : "NONE");
+
+  String json;
+  json.reserve(900);
+
+  json += "{";
+  json += "\"time\":\"" + jsonEscape(timeStr) + "\",";
+  json += "\"time_synced\":"; json += (timeAvail ? "true" : "false"); json += ",";
+
+  json += "\"wifi\":{";
+  json += "\"connected\":"; json += (connected ? "true" : "false"); json += ",";
+  json += "\"mode\":\"" + jsonEscape(modeStr) + "\"";
+
+  if (connected) {
+    json += ",\"ssid\":\"" + jsonEscape(WiFi.SSID()) + "\"";
+    json += ",\"rssi\":" + String(WiFi.RSSI());
+    json += ",\"ip\":\"" + jsonEscape(WiFi.localIP().toString()) + "\"";
+  }
+  json += "},";
+
+  json += "\"sensors\":{";
+  json += "\"temp_c\":";
+  if (isnan(gSensors.temperatureC)) json += "null";
+  else json += String(gSensors.temperatureC, 1);
+  json += ",\"hum_rh\":";
+  if (isnan(gSensors.humidityRH)) json += "null";
+  else json += String(gSensors.humidityRH, 0);
+  json += ",\"soil1\":" + String(gSensors.soil1Percent);
+  json += ",\"soil2\":" + String(gSensors.soil2Percent);
+  json += "},";
+
+  auto sched = [](const LightConfig& lc)->String {
+    return minutesToTimeStrSafe(lc.onMinutes) + "–" + minutesToTimeStrSafe(lc.offMinutes);
+  };
+
+  json += "\"relays\":{";
+
+  json += "\"light1\":{";
+  json += "\"state\":"; json += (gRelays.light1 ? "1" : "0"); json += ",";
+  json += "\"auto\":";  json += (gConfig.light1.enabled ? "1" : "0"); json += ",";
+  json += "\"schedule\":\"" + jsonEscape(sched(gConfig.light1)) + "\"";
+  json += "},";
+
+  json += "\"light2\":{";
+  json += "\"state\":"; json += (gRelays.light2 ? "1" : "0"); json += ",";
+  json += "\"auto\":";  json += (gConfig.light2.enabled ? "1" : "0"); json += ",";
+  json += "\"schedule\":\"" + jsonEscape(sched(gConfig.light2)) + "\"";
+  json += "},";
+
+  json += "\"fan\":{";
+  json += "\"state\":"; json += (gRelays.fan ? "1" : "0"); json += ",";
+  json += "\"auto\":";  json += (gConfig.autoFan ? "1" : "0");
+  json += "},";
+
+  json += "\"pump\":{";
+  json += "\"state\":"; json += (gRelays.pump ? "1" : "0"); json += ",";
+  json += "\"auto\":";  json += (gConfig.autoPump ? "1" : "0");
+  json += "}";
+
+  json += "}"; // relays
+  json += "}";
+
+  server.send(200, "application/json", json);
+}
+
+// ================= Static assets from LittleFS =================
 
 static void handleChartJs() {
   // Chart.js is not sensitive; no auth required even in STA mode
-  File f = LittleFS.open("/chart.umd.min.js", "r");
-  if (!f) {
-    server.send(404, "text/plain", "chart.umd.min.js not found");
+  streamStaticFile("/chart.umd.min.js", "application/javascript");
+}
+
+static void handleAppCss() {
+  streamStaticFile("/app.css", "text/css");
+}
+
+static void handleAppJs() {
+  streamStaticFile("/app.js", "application/javascript");
+}
+
+// ================= API controls (new) =================
+
+static void handleApiToggle() {
+  if (!requireAuth()) return;
+
+  if (!server.hasArg("id")) {
+    server.send(400, "application/json", "{\"ok\":false,\"error\":\"Missing id\"}");
     return;
   }
-  server.streamFile(f, "application/javascript");
-  f.close();
+
+  String id = server.arg("id");
+
+  bool changed = false;
+  if (id == "light1" && !gConfig.light1.enabled) {
+    gRelays.light1 = !gRelays.light1; changed = true;
+  } else if (id == "light2" && !gConfig.light2.enabled) {
+    gRelays.light2 = !gRelays.light2; changed = true;
+  } else if (id == "fan" && !gConfig.autoFan) {
+    gRelays.fan = !gRelays.fan; changed = true;
+  } else if (id == "pump" && !gConfig.autoPump) {
+    gRelays.pump = !gRelays.pump; changed = true;
+  }
+
+  server.send(200, "application/json", String("{\"ok\":true,\"changed\":") + (changed ? "true" : "false") + "}");
+}
+
+static void handleApiMode() {
+  if (!requireAuth()) return;
+
+  if (!server.hasArg("id") || !server.hasArg("auto")) {
+    server.send(400, "application/json", "{\"ok\":false,\"error\":\"Missing args\"}");
+    return;
+  }
+
+  String id   = server.arg("id");
+  bool autoOn = (server.arg("auto") == "1");
+
+  if      (id == "fan")    gConfig.autoFan        = autoOn;
+  else if (id == "pump")   gConfig.autoPump       = autoOn;
+  else if (id == "light1") gConfig.light1.enabled = autoOn;
+  else if (id == "light2") gConfig.light2.enabled = autoOn;
+
+  saveConfig();
+  server.send(200, "application/json", "{\"ok\":true}");
 }
 
 // ================= Wi-Fi configuration page =================
@@ -117,104 +352,70 @@ static void handleWifiConfigGet() {
   String storedSsid, storedPass;
   loadWifiCredentials(storedSsid, storedPass);
 
-  // Scan Wi-Fi networks
   int n = WiFi.scanNetworks();
-  Serial.print("[WiFi] Scan found ");
-  Serial.print(n);
-  Serial.println(" networks");
 
   String page;
-  page.reserve(9000);
+  page.reserve(12000);
 
-  page += "<!DOCTYPE html><html><head><meta charset='utf-8'>";
-  page += "<meta name='viewport' content='width=device-width,initial-scale=1'>";
-  page += "<title>Wi-Fi Configuration</title>";
-  page += "<style>";
-  page += "body{font-family:sans-serif;margin:1rem;}";
-  page += "label{display:block;margin-top:0.5rem;}";
-  page += "input{width:100%;max-width:280px;padding:0.2rem;}";
-  page += "button{padding:0.4rem 0.8rem;margin-top:0.5rem;}";
-  page += ".card{border:1px solid #ccc;padding:0.5rem;margin-bottom:0.5rem;border-radius:4px;}";
-  page += "table{border-collapse:collapse;width:100%;}";
-  page += "th,td{border:1px solid #ccc;padding:0.3rem;font-size:0.9rem;}";
-  page += "tr.ssid-row:hover{background:#eef;cursor:pointer;}";
-  page += "</style>";
-  page += "<script>";
-  page += "function setSsid(v){ document.getElementById('ssid').value=v; }";
-  page += "</script>";
-  page += "</head><body>";
+  beginPage(page, "Wi-Fi", "wifi", false);
 
-  page += "<h1>Wi-Fi Settings</h1>";
-  if (!sCaptivePortalActive) {
-    page += "<p><a href='/'><button>Back</button></a></p>";
-  }
-
-  // Current connection status
-  page += "<div class='card'><h2>Current connection</h2><p>";
+  page += "<div class='card'><h2>Current connection</h2>";
   wl_status_t st = WiFi.status();
   if (st == WL_CONNECTED) {
-    page += "Connected to <b>";
-    page += WiFi.SSID();
-    page += "</b> (RSSI ";
-    page += String(WiFi.RSSI());
-    page += " dBm), IP ";
-    page += WiFi.localIP().toString();
+    page += "<div class='sub'>Connected to <b>" + htmlEscape(WiFi.SSID()) + "</b>";
+    page += " · RSSI " + String(WiFi.RSSI()) + " dBm";
+    page += " · IP " + htmlEscape(WiFi.localIP().toString()) + "</div>";
   } else {
-    page += "Not connected.";
+    page += "<div class='sub'>Not connected.</div>";
   }
-  page += "</p></div>";
+  page += "</div>";
 
-  // Config form
   page += "<div class='card'><h2>Configure Wi-Fi</h2>";
+  page += "<div class='sub'>After saving, the device will reboot and try to connect.</div>";
   page += "<form method='POST' action='/wifi'>";
-  page += "<label>SSID:<br>";
-  page += "<input type='text' id='ssid' name='ssid' value='";
-  page += storedSsid;
-  page += "'></label>";
-  page += "<label>Password:<br>";
-  page += "<input type='password' name='pass' value='";
-  page += storedPass;
-  page += "'></label>";
-  page += "<p><small>Password is stored in ESP32 NVS (not encrypted). "
-          "After saving, the device will reboot and try to connect.</small></p>";
-  page += "<button type='submit'>Save &amp; Reboot</button>";
+  page += "<div class='form-grid' style='margin-top:12px'>";
+  page += "<div class='field'><label>SSID</label>";
+  page += "<input type='text' id='ssid' name='ssid' value='" + htmlEscape(storedSsid) + "'></div>";
+  page += "<div class='field'><label>Password</label>";
+  page += "<input type='password' name='pass' value='" + htmlEscape(storedPass) + "'></div>";
+  page += "</div>";
+  page += "<p class='small'>Password is stored in ESP32 NVS (not encrypted).</p>";
+  page += "<div class='row'><button class='btn primary' type='submit'>Save &amp; Reboot</button></div>";
   page += "</form></div>";
 
-  // Scan results
   page += "<div class='card'><h2>Available networks</h2>";
+  page += "<div class='row' style='justify-content:space-between'>";
+  page += "<div class='sub'>Click a row to copy the SSID into the form.</div>";
+  page += "<input id='ssidFilter' placeholder='Filter SSIDs…' style='max-width:280px'>";
+  page += "</div>";
+
   if (n <= 0) {
-    page += "<p>No networks found.</p>";
+    page += "<p class='small'>No networks found.</p>";
   } else {
-    page += "<p>Click a row to copy SSID into the form.</p>";
-    page += "<table><tr><th>SSID</th><th>RSSI (dBm)</th><th>Enc</th></tr>";
+    page += "<table class='table' style='margin-top:12px'>";
+    page += "<tr><th>SSID</th><th>RSSI</th><th>Encryption</th></tr>";
     for (int i = 0; i < n; ++i) {
       String ssid = WiFi.SSID(i);
       int32_t rssi = WiFi.RSSI(i);
       wifi_auth_mode_t enc = WiFi.encryptionType(i);
 
-      page += "<tr class='ssid-row' onclick=\"setSsid('";
-      // escape single quotes in SSID
-      String esc = ssid;
-      esc.replace("'", "\\'");
-      page += esc;
-      page += "')\"><td>";
-      page += ssid;
+      page += "<tr class='ssid-row' data-ssid='";
+      page += htmlEscape(ssid);
+      page += "'><td>";
+      page += htmlEscape(ssid);
       page += "</td><td>";
       page += String(rssi);
-      page += "</td><td>";
-      if (enc == WIFI_AUTH_OPEN) page += "open";
-      else page += "secured";
+      page += " dBm</td><td>";
+      page += (enc == WIFI_AUTH_OPEN) ? "open" : "secured";
       page += "</td></tr>";
     }
     page += "</table>";
   }
   page += "</div>";
 
-  page += "</body></html>";
+  endPage(page);
 
   server.send(200, "text/html", page);
-
-  // Free scan results
   WiFi.scanDelete();
 }
 
@@ -235,189 +436,124 @@ static void handleWifiConfigPost() {
   saveWifiCredentials(ssid, pass);
 
   String page;
-  page.reserve(1024);
-  page += "<!DOCTYPE html><html><head><meta charset='utf-8'>";
-  page += "<meta name='viewport' content='width=device-width,initial-scale=1'>";
-  page += "<title>Wi-Fi Saved</title></head><body>";
-  page += "<h1>Wi-Fi configuration saved</h1>";
-  page += "<p>SSID: <b>";
-  page += ssid;
-  page += "</b></p>";
-  page += "<p>The device will reboot now and attempt to connect.</p>";
-  page += "</body></html>";
+  page.reserve(1600);
+
+  beginPage(page, "Wi-Fi Saved", "wifi", false);
+  page += "<div class='card'><h2>Wi-Fi configuration saved</h2>";
+  page += "<p class='sub'>SSID: <b>" + htmlEscape(ssid) + "</b></p>";
+  page += "<p class='sub'>Rebooting now and attempting to connect…</p>";
+  page += "</div>";
+  endPage(page);
 
   server.send(200, "text/html", page);
 
-  // Small delay to allow the response to be sent
   delay(500);
   ESP.restart();
 }
 
-// ================= Status page (/) =================
+// ================= Dashboard (/) =================
 
 static void handleRoot() {
   if (!requireAuth()) return;
 
   String page;
-  page.reserve(12000);
+  page.reserve(9000);
 
-  struct tm nowTime;
-  bool timeAvail;
-  greenhouseGetTime(nowTime, timeAvail);
+  beginPage(page, "EZgrow Dashboard", "dashboard", true);
 
-  page += "<!DOCTYPE html><html><head><meta charset='utf-8'>";
-  page += "<meta name='viewport' content='width=device-width,initial-scale=1'>";
-  page += "<title>Greenhouse Controller</title>";
-  page += "<style>";
-  page += "body{font-family:sans-serif;margin:1rem;}";
-  page += "h1{font-size:1.2rem;}";
-  page += ".card{border:1px solid #ccc;padding:0.5rem;margin-bottom:0.5rem;border-radius:4px;}";
-  page += "button{padding:0.4rem 0.8rem;margin:0.1rem;}";
-  page += "a.btn{display:inline-block;margin:0.2rem 0;}";
-  page += "</style></head><body>";
+  page += "<div class='grid grid-tiles'>";
+  page += "<div class='tile'><div class='tile-label'>Temperature</div>"
+          "<div class='tile-value'><span id='v-temp'>—</span><span class='tile-unit'>°C</span></div>"
+          "<div class='tile-label'>Air</div></div>";
 
-  page += "<h1>Greenhouse Controller</h1>";
-  page += "<p><a class='btn' href='/config'><button>Configuration</button></a></p>";
-  page += "<p><a class='btn' href='/wifi'><button>Wi-Fi Settings</button></a></p>";
+  page += "<div class='tile'><div class='tile-label'>Humidity</div>"
+          "<div class='tile-value'><span id='v-hum'>—</span><span class='tile-unit'>%</span></div>"
+          "<div class='tile-label'>Air</div></div>";
 
-  if (timeAvail) {
-    char buf[32];
-    sprintf(buf, "%02d:%02d:%02d", nowTime.tm_hour, nowTime.tm_min, nowTime.tm_sec);
-    page += String("<p>Time: ") + buf + "</p>";
-  } else {
-    page += "<p>Time: syncing...</p>";
-  }
+  page += "<div class='tile'><div class='tile-label'>Soil 1</div>"
+          "<div class='tile-value'><span id='v-s1'>—</span><span class='tile-unit'>%</span></div>"
+          "<div class='tile-label'>Moisture</div></div>";
 
-  // Sensors
-  page += "<div class='card'><h2>Sensors</h2><ul>";
-  page += "<li>Temperature: ";
-  if (!isnan(gSensors.temperatureC)) page += String(gSensors.temperatureC, 1) + " &deg;C";
-  else page += "N/A";
-  page += "</li>";
-
-  page += "<li>Humidity: ";
-  if (!isnan(gSensors.humidityRH)) page += String(gSensors.humidityRH, 0) + " %";
-  else page += "N/A";
-  page += "</li>";
-
-  page += "<li>Soil 1: " + String(gSensors.soil1Percent) + " %</li>";
-  page += "<li>Soil 2: " + String(gSensors.soil2Percent) + " %</li>";
-  page += "</ul></div>";
-
-  // Relays & modes
-  page += "<div class='card'><h2>Relays</h2>";
-
-  // Light 1
-  page += "<p>Light 1: " + htmlBool(gRelays.light1) + " (" + htmlAuto(gConfig.light1.enabled) + ") ";
-  if (gConfig.light1.enabled) {
-    page += "<a href='/mode?id=light1&auto=0'><button>Switch to MANUAL</button></a>";
-  } else {
-    page += "<a href='/toggle?id=light1'><button>Toggle</button></a>";
-    page += "<a href='/mode?id=light1&auto=1'><button>Switch to AUTO</button></a>";
-  }
-  page += "<br><small>Schedule: ";
-  page += minutesToTimeStr(gConfig.light1.onMinutes) + "–" + minutesToTimeStr(gConfig.light1.offMinutes) + "</small></p>";
-
-  // Light 2
-  page += "<p>Light 2: " + htmlBool(gRelays.light2) + " (" + htmlAuto(gConfig.light2.enabled) + ") ";
-  if (gConfig.light2.enabled) {
-    page += "<a href='/mode?id=light2&auto=0'><button>Switch to MANUAL</button></a>";
-  } else {
-    page += "<a href='/toggle?id=light2'><button>Toggle</button></a>";
-    page += "<a href='/mode?id=light2&auto=1'><button>Switch to AUTO</button></a>";
-  }
-  page += "<br><small>Schedule: ";
-  page += minutesToTimeStr(gConfig.light2.onMinutes) + "–" + minutesToTimeStr(gConfig.light2.offMinutes) + "</small></p>";
-
-  // Fan
-  page += "<p>Fan: " + htmlBool(gRelays.fan) + " (" + htmlAuto(gConfig.autoFan) + ") ";
-  if (gConfig.autoFan) {
-    page += "<a href='/mode?id=fan&auto=0'><button>Switch to MANUAL</button></a>";
-  } else {
-    page += "<a href='/toggle?id=fan'><button>Toggle</button></a>";
-    page += "<a href='/mode?id=fan&auto=1'><button>Switch to AUTO</button></a>";
-  }
-  page += "</p>";
-
-  // Pump
-  page += "<p>Pump: " + htmlBool(gRelays.pump) + " (" + htmlAuto(gConfig.autoPump) + ") ";
-  if (gConfig.autoPump) {
-    page += "<a href='/mode?id=pump&auto=0'><button>Switch to MANUAL</button></a>";
-  } else {
-    page += "<a href='/toggle?id=pump'><button>Toggle</button></a>";
-    page += "<a href='/mode?id=pump&auto=1'><button>Switch to AUTO</button></a>";
-  }
-  page += "</p>";
-
-  page += "<p><small>Fan: ON &ge; " + String(gConfig.env.fanOnTemp, 1) +
-          " &deg;C or &ge; " + String(gConfig.env.fanHumOn) +
-          "% RH; OFF when &le; " + String(gConfig.env.fanOffTemp, 1) +
-          " &deg;C and &le; " + String(gConfig.env.fanHumOff) +
-          "% RH. Pump: dry &lt; " + String(gConfig.env.soilDryThreshold) +
-          "%, wet &gt; " + String(gConfig.env.soilWetThreshold) + "%.</small></p>";
-
+  page += "<div class='tile'><div class='tile-label'>Soil 2</div>"
+          "<div class='tile-value'><span id='v-s2'>—</span><span class='tile-unit'>%</span></div>"
+          "<div class='tile-label'>Moisture</div></div>";
   page += "</div>";
 
-  // History card
-  page += "<div class='card'><h2>History (last 24 h)</h2>";
-  page += "<p>Temperature, humidity and light states (logged every minute).</p>";
-  page += "<canvas id='tempHumChart' height='150'></canvas>";
-  page += "<canvas id='lightChart' style='margin-top:1rem;' height='120'></canvas>";
+  page += "<div class='card' style='margin-top:14px'>";
+  page += "<h2>Controls</h2>";
+  page += "<div class='controls'>";
+
+  auto control = [&](const char* id, const char* label, bool isAuto, bool isOn, const String& schedule) {
+    page += "<div class='card' style='box-shadow:none'>";
+    page += "<div class='control-head'>";
+    page += "<div><div class='control-title'>" + String(label) + "</div>";
+    page += "<div class='sub'>Mode <span class='badge ";
+    page += (isAuto ? "auto" : "man");
+    page += "' id='m-"; page += id; page += "'>";
+    page += htmlAuto(isAuto);
+    page += "</span></div></div>";
+
+    page += "<span class='badge ";
+    page += (isOn ? "on" : "off");
+    page += "' id='b-"; page += id; page += "'>";
+    page += htmlBool(isOn);
+    page += "</span>";
+    page += "</div>";
+
+    page += "<div class='row'>";
+    page += "<label class='switch'><input type='checkbox' id='sw-"; page += id; page += "'";
+    if (isOn) page += " checked";
+    if (isAuto) page += " disabled";
+    page += "><span class='slider'></span></label>";
+
+    page += "<button type='button' class='btn' id='btn-"; page += id; page += "'>";
+    page += isAuto ? "Switch to MANUAL" : "Switch to AUTO";
+    page += "</button>";
+
+    page += "<span class='meta' id='sched-"; page += id; page += "'>";
+    page += htmlEscape(schedule);
+    page += "</span>";
+
+    page += "</div></div>";
+  };
+
+  control("light1", "Light 1", gConfig.light1.enabled, gRelays.light1,
+          minutesToTimeStrSafe(gConfig.light1.onMinutes) + "–" + minutesToTimeStrSafe(gConfig.light1.offMinutes));
+  control("light2", "Light 2", gConfig.light2.enabled, gRelays.light2,
+          minutesToTimeStrSafe(gConfig.light2.onMinutes) + "–" + minutesToTimeStrSafe(gConfig.light2.offMinutes));
+  control("fan", "Fan", gConfig.autoFan, gRelays.fan, "threshold-based");
+  control("pump", "Pump", gConfig.autoPump, gRelays.pump, "soil-based");
+
+  page += "</div>"; // controls
+
+  page += "<p class='small' style='margin-top:12px'>Fan: ON ≥ ";
+  page += String(gConfig.env.fanOnTemp, 1);
+  page += " °C or ≥ ";
+  page += String(gConfig.env.fanHumOn);
+  page += "% RH · OFF when ≤ ";
+  page += String(gConfig.env.fanOffTemp, 1);
+  page += " °C and ≤ ";
+  page += String(gConfig.env.fanHumOff);
+  page += "% RH. Pump: dry &lt; ";
+  page += String(gConfig.env.soilDryThreshold);
+  page += "%, wet &gt; ";
+  page += String(gConfig.env.soilWetThreshold);
+  page += "%.</p>";
+
+  page += "</div>"; // card
+
+  page += "<div class='card' style='margin-top:14px'>";
+  page += "<h2>History (last 24 h)</h2>";
+  page += "<div class='sub'>Temperature/humidity + light states (logged every minute).</div>";
+  page += "<div style='margin-top:12px'><canvas id='tempHumChart' height='150'></canvas></div>";
+  page += "<div style='margin-top:14px'><canvas id='lightChart' height='120'></canvas></div>";
   page += "</div>";
 
-  // Load Chart.js locally from LittleFS
-  page += "<script src='/chart.umd.min.js'></script>";
-
-  // Chart initialization script
-  page += "<script>";
-  page += "function loadHistory(){";
-  page += "fetch('/api/history').then(r=>r.json()).then(d=>{";
-  page += "const pts=d.points||[];";
-  page += "if(!pts.length){return;}";
-
-  page += "const labels=pts.map((p,idx)=>{";
-  page += " if(p.t&&p.t>0){";
-  page += "  const dt=new Date(p.t*1000);";
-  page += "  return dt.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});";
-  page += " } else { return idx.toString(); }";
-  page += "});";
-
-  page += "const temps=pts.map(p=>p.temp);";
-  page += "const hums=pts.map(p=>p.hum);";
-  page += "const l1=pts.map(p=>p.l1);";
-  page += "const l2=pts.map(p=>p.l2);";
-
-  // Temp/Hum chart
-  page += "const ctx1=document.getElementById('tempHumChart').getContext('2d');";
-  page += "new Chart(ctx1,{type:'line',data:{labels:labels,datasets:[";
-  page += "{label:'Temperature (°C)',data:temps,borderColor:'red',backgroundColor:'rgba(255,0,0,0.1)',tension:0.2,yAxisID:'y'},";
-  page += "{label:'Humidity (%)',data:hums,borderColor:'blue',backgroundColor:'rgba(0,0,255,0.1)',tension:0.2,yAxisID:'y1'}";
-  page += "]},options:{responsive:true,interaction:{mode:'index',intersect:false},stacked:false,plugins:{legend:{display:true}},scales:{";
-  page += "y:{type:'linear',position:'left',title:{display:true,text:'Temperature (°C)'}},";
-  page += "y1:{type:'linear',position:'right',title:{display:true,text:'Humidity (%)'},grid:{drawOnChartArea:false}}";
-  page += "}}});";
-
-  // Light chart
-  page += "const ctx2=document.getElementById('lightChart').getContext('2d');";
-  page += "new Chart(ctx2,{type:'line',data:{labels:labels,datasets:[";
-  page += "{label:'Light 1',data:l1,stepped:true,borderColor:'green',backgroundColor:'rgba(0,255,0,0.1)'},";
-  page += "{label:'Light 2',data:l2,stepped:true,borderColor:'orange',backgroundColor:'rgba(255,165,0,0.1)'}";
-  page += "]},options:{responsive:true,interaction:{mode:'index',intersect:false},plugins:{legend:{display:true}},scales:{";
-  page += "y:{min:-0.1,max:1.1,ticks:{stepSize:1},title:{display:true,text:'Light state (0=OFF,1=ON)'}},";
-  page += "x:{ticks:{maxTicksLimit:12}}";
-  page += "}}});";
-
-  page += "}).catch(e=>{console.error(e);});";   // end fetch
-  page += "}";                                   // end loadHistory
-  page += "window.addEventListener('load', loadHistory);";
-  page += "</script>";
-
-  page += "</body></html>";
-
+  endPage(page);
   server.send(200, "text/html", page);
 }
 
-// ================= Relay toggle & mode =================
+// ================= Relay toggle & mode (legacy endpoints kept) =================
 
 static void handleToggle() {
   if (!requireAuth()) return;
@@ -463,103 +599,110 @@ static void handleMode() {
   server.send(302, "text/plain", "");
 }
 
-// ================= Config page =================
+// ================= Config page (tabbed) =================
 
 static void handleConfigGet() {
   if (!requireAuth()) return;
 
   String page;
-  page.reserve(7000);
+  page.reserve(12000);
 
-  page += "<!DOCTYPE html><html><head><meta charset='utf-8'>";
-  page += "<meta name='viewport' content='width=device-width,initial-scale=1'>";
-  page += "<title>Greenhouse Config</title>";
-  page += "<style>";
-  page += "body{font-family:sans-serif;margin:1rem;}";
-  page += "label{display:block;margin-top:0.5rem;}";
-  page += "input{width:100%;max-width:220px;padding:0.2rem;}";
-  page += "button{padding:0.4rem 0.8rem;margin-top:0.5rem;}";
-  page += ".card{border:1px solid #ccc;padding:0.5rem;margin-bottom:0.5rem;border-radius:4px;}";
-  page += "</style></head><body>";
+  beginPage(page, "EZgrow Config", "config", false);
 
-  page += "<h1>Configuration</h1>";
-  page += "<p><a href='/'><button>Back</button></a></p>";
+  page += "<div class='card'><h2>Configuration</h2>";
+  page += "<div class='sub'>Settings are saved to NVS and applied immediately.</div>";
 
-  page += "<div class='card'><h2>Environment thresholds</h2>";
-  page += "<form method='POST' action='/config'>";
+  page += "<div class='tabs' data-tabs='config' data-persist='ezgrow_config_tab' style='margin-top:12px'>";
+  page += "<button class='tab' type='button' data-tab='env'>Environment</button>";
+  page += "<button class='tab' type='button' data-tab='lights'>Lights</button>";
+  page += "<button class='tab' type='button' data-tab='auto'>Automation</button>";
+  page += "<button class='tab' type='button' data-tab='security'>Security</button>";
+  page += "</div>";
 
-  page += "<label>Fan ON temperature (&deg;C):<br>";
-  page += "<input type='number' step='0.1' name='fanOn' value='" + String(gConfig.env.fanOnTemp, 1) + "'></label>";
+  page += "<div class='tab-panels'>";
 
-  page += "<label>Fan OFF temperature (&deg;C):<br>";
-  page += "<input type='number' step='0.1' name='fanOff' value='" + String(gConfig.env.fanOffTemp, 1) + "'></label>";
+  page += "<form method='POST' action='/config' style='margin-top:12px'>";
 
-  page += "<label>Fan ON humidity (%RH):<br>";
-  page += "<input type='number' step='1' name='fanHumOn' value='" + String(gConfig.env.fanHumOn) + "'></label>";
+  // ENV
+  page += "<div class='tab-panel' data-tab='env'>";
+  page += "<div class='form-grid'>";
+  page += "<div class='field'><label>Fan ON temperature (°C)</label>"
+          "<input type='number' step='0.1' name='fanOn' value='" + String(gConfig.env.fanOnTemp, 1) + "'></div>";
+  page += "<div class='field'><label>Fan OFF temperature (°C)</label>"
+          "<input type='number' step='0.1' name='fanOff' value='" + String(gConfig.env.fanOffTemp, 1) + "'></div>";
+  page += "<div class='field'><label>Fan ON humidity (%RH)</label>"
+          "<input type='number' step='1' name='fanHumOn' value='" + String(gConfig.env.fanHumOn) + "'></div>";
+  page += "<div class='field'><label>Fan OFF humidity (%RH)</label>"
+          "<input type='number' step='1' name='fanHumOff' value='" + String(gConfig.env.fanHumOff) + "'></div>";
+  page += "<div class='field'><label>Soil DRY threshold (%)</label>"
+          "<input type='number' step='1' name='soilDry' value='" + String(gConfig.env.soilDryThreshold) + "'></div>";
+  page += "<div class='field'><label>Soil WET threshold (%)</label>"
+          "<input type='number' step='1' name='soilWet' value='" + String(gConfig.env.soilWetThreshold) + "'></div>";
+  page += "<div class='field'><label>Pump minimum OFF time (seconds)</label>"
+          "<input type='number' step='1' name='pumpOff' value='" + String(gConfig.env.pumpMinOffSec) + "'></div>";
+  page += "<div class='field'><label>Pump maximum ON time (seconds)</label>"
+          "<input type='number' step='1' name='pumpOn' value='" + String(gConfig.env.pumpMaxOnSec) + "'></div>";
+  page += "</div>";
+  page += "<p class='small' style='margin-top:10px'>Tip: keep hysteresis sane (OFF < ON) to avoid oscillation.</p>";
+  page += "</div>";
 
-  page += "<label>Fan OFF humidity (%RH):<br>";
-  page += "<input type='number' step='1' name='fanHumOff' value='" + String(gConfig.env.fanHumOff) + "'></label>";
-
-  page += "<label>Soil DRY threshold (%):<br>";
-  page += "<input type='number' step='1' name='soilDry' value='" + String(gConfig.env.soilDryThreshold) + "'></label>";
-
-  page += "<label>Soil WET threshold (%):<br>";
-  page += "<input type='number' step='1' name='soilWet' value='" + String(gConfig.env.soilWetThreshold) + "'></label>";
-
-  page += "<label>Pump minimum OFF time (seconds):<br>";
-  page += "<input type='number' step='1' name='pumpOff' value='" + String(gConfig.env.pumpMinOffSec) + "'></label>";
-
-  page += "<label>Pump maximum ON time (seconds):<br>";
-  page += "<input type='number' step='1' name='pumpOn' value='" + String(gConfig.env.pumpMaxOnSec) + "'></label>";
-
-  // Light schedules
-  page += "<h2>Light schedules</h2>";
-
-  page += "<label><input type='checkbox' name='l1Auto' value='1'";
+  // LIGHTS
+  page += "<div class='tab-panel' data-tab='lights'>";
+  page += "<div class='form-grid'>";
+  page += "<div class='field'><label><input type='checkbox' name='l1Auto' value='1'";
   if (gConfig.light1.enabled) page += " checked";
   page += "> Use schedule for Light 1</label>";
+  page += "<div class='small'>AUTO uses schedule; MAN allows dashboard toggling.</div></div>";
 
-  page += "<label>Light 1 ON time:<br>";
-  page += "<input type='time' name='l1On' value='" + minutesToTimeStr(gConfig.light1.onMinutes) + "'></label>";
-
-  page += "<label>Light 1 OFF time:<br>";
-  page += "<input type='time' name='l1Off' value='" + minutesToTimeStr(gConfig.light1.offMinutes) + "'></label>";
-
-  page += "<label><input type='checkbox' name='l2Auto' value='1'";
+  page += "<div class='field'><label><input type='checkbox' name='l2Auto' value='1'";
   if (gConfig.light2.enabled) page += " checked";
   page += "> Use schedule for Light 2</label>";
+  page += "<div class='small'>Schedules can cross midnight.</div></div>";
 
-  page += "<label>Light 2 ON time:<br>";
-  page += "<input type='time' name='l2On' value='" + minutesToTimeStr(gConfig.light2.onMinutes) + "'></label>";
+  page += "<div class='field'><label>Light 1 ON</label>"
+          "<input type='time' name='l1On' value='" + minutesToTimeStrSafe(gConfig.light1.onMinutes) + "'></div>";
+  page += "<div class='field'><label>Light 1 OFF</label>"
+          "<input type='time' name='l1Off' value='" + minutesToTimeStrSafe(gConfig.light1.offMinutes) + "'></div>";
+  page += "<div class='field'><label>Light 2 ON</label>"
+          "<input type='time' name='l2On' value='" + minutesToTimeStrSafe(gConfig.light2.onMinutes) + "'></div>";
+  page += "<div class='field'><label>Light 2 OFF</label>"
+          "<input type='time' name='l2Off' value='" + minutesToTimeStrSafe(gConfig.light2.offMinutes) + "'></div>";
+  page += "</div>";
+  page += "</div>";
 
-  page += "<label>Light 2 OFF time:<br>";
-  page += "<input type='time' name='l2Off' value='" + minutesToTimeStr(gConfig.light2.offMinutes) + "'></label>";
-
-  page += "<label><input type='checkbox' name='autoFan' value='1'";
+  // AUTO
+  page += "<div class='tab-panel' data-tab='auto'>";
+  page += "<div class='form-grid'>";
+  page += "<div class='field'><label><input type='checkbox' name='autoFan' value='1'";
   if (gConfig.autoFan) page += " checked";
-  page += "> Use automatic fan control</label>";
-
-  page += "<label><input type='checkbox' name='autoPump' value='1'";
+  page += "> Automatic fan control</label><div class='small'>Uses temperature/humidity thresholds.</div></div>";
+  page += "<div class='field'><label><input type='checkbox' name='autoPump' value='1'";
   if (gConfig.autoPump) page += " checked";
-  page += "> Use automatic pump control</label>";
+  page += "> Automatic pump control</label><div class='small'>Uses soil thresholds + min OFF / max ON timing.</div></div>";
+  page += "</div>";
+  page += "</div>";
 
-  // Web UI auth
-  page += "<h2>Web UI authentication</h2>";
-  page += "<p><small>If username is empty, HTTP authentication is disabled.</small></p>";
+  // SECURITY
+  page += "<div class='tab-panel' data-tab='security'>";
+  page += "<p class='small'>If username is empty, HTTP Basic Auth is disabled.</p>";
+  page += "<div class='form-grid'>";
+  page += "<div class='field'><label>Username</label>"
+          "<input type='text' name='authUser' value='" + htmlEscape(sWebAuthUser) + "'></div>";
+  page += "<div class='field'><label>Password (leave blank to keep current)</label>"
+          "<input type='password' name='authPass' value=''></div>";
+  page += "</div>";
+  page += "</div>";
 
-  page += "<label>Username:<br>";
-  page += "<input type='text' name='authUser' value='";
-  page += sWebAuthUser;
-  page += "'></label>";
+  page += "<div class='row' style='margin-top:14px'>";
+  page += "<button class='btn primary' type='submit'>Save</button>";
+  page += "<a class='btn ghost' href='/'>Back</a>";
+  page += "</div>";
 
-  page += "<label>Password (leave blank to keep current):<br>";
-  page += "<input type='password' name='authPass' value=''></label>";
+  page += "</form>";
+  page += "</div>"; // panels
+  page += "</div>"; // card
 
-  page += "<button type='submit'>Save</button>";
-  page += "</form></div>";
-
-  page += "</body></html>";
-
+  endPage(page);
   server.send(200, "text/html", page);
 }
 
@@ -643,20 +786,17 @@ static void handleConfigPost() {
   if (server.hasArg("authUser")) {
     String u = server.arg("authUser");
     u.trim();
-    // username may be empty -> disable auth
     newUser = u;
   }
 
   if (server.hasArg("authPass")) {
     String p = server.arg("authPass");
     p.trim();
-    // If password field is non-empty, update it; if empty, keep existing
     if (p.length() > 0) {
       newPass = p;
     }
   }
 
-  // If username is empty, we also clear password to avoid confusion
   if (newUser.length() == 0) {
     newPass = "";
   }
@@ -675,45 +815,53 @@ static void handleConfigPost() {
 
 static void handleNotFound() {
   if (sCaptivePortalActive) {
-    // In captive portal mode, redirect everything to Wi-Fi setup page
     server.sendHeader("Location", "/wifi", true);
     server.send(302, "text/plain", "");
     return;
   }
-
   server.send(404, "text/plain", "Not found");
 }
 
 // ================= Public API =================
 
 void initWebServer() {
-  // Load web auth credentials from NVS at startup
   loadWebAuthConfig(sWebAuthUser, sWebAuthPass);
 
-  // Determine if we should run a captive portal:
-  // AP is enabled AND STA is NOT connected
   bool hasAp        = (WiFi.getMode() & WIFI_MODE_AP);
   bool staConnected = (WiFi.status() == WL_CONNECTED);
 
   if (hasAp && !staConnected) {
     sCaptivePortalActive = true;
     IPAddress apIP = WiFi.softAPIP();
-    Serial.print("[Portal] Captive portal active on AP IP: ");
-    Serial.println(apIP);
     dnsServer.start(53, "*", apIP);
   } else {
     sCaptivePortalActive = false;
   }
 
   server.on("/",                 HTTP_GET,  handleRoot);
+
+  // Legacy endpoints
   server.on("/toggle",           HTTP_GET,  handleToggle);
   server.on("/mode",             HTTP_GET,  handleMode);
+
+  // New JSON endpoints for the richer UI
+  server.on("/api/status",       HTTP_GET,  handleStatusApi);
+  server.on("/api/toggle",       HTTP_GET,  handleApiToggle);
+  server.on("/api/mode",         HTTP_GET,  handleApiMode);
+
   server.on("/config",           HTTP_GET,  handleConfigGet);
   server.on("/config",           HTTP_POST, handleConfigPost);
-  server.on("/api/history",      HTTP_GET,  handleHistoryApi);
-  server.on("/chart.umd.min.js", HTTP_GET,  handleChartJs);
+
   server.on("/wifi",             HTTP_GET,  handleWifiConfigGet);
   server.on("/wifi",             HTTP_POST, handleWifiConfigPost);
+
+  server.on("/api/history",      HTTP_GET,  handleHistoryApi);
+
+  // Static assets (offline)
+  server.on("/chart.umd.min.js", HTTP_GET,  handleChartJs);
+  server.on("/app.css",          HTTP_GET,  handleAppCss);
+  server.on("/app.js",           HTTP_GET,  handleAppJs);
+
   server.onNotFound(handleNotFound);
 
   server.begin();
@@ -721,7 +869,6 @@ void initWebServer() {
 
 void handleWebServer() {
   server.handleClient();
-
   if (sCaptivePortalActive) {
     dnsServer.processNextRequest();
   }

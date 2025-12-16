@@ -31,8 +31,17 @@ static const char* DEFAULT_WIFI_PASS = "YOUR_PASSWORD";
 
 static const char* NTP_SERVER1 = "pool.ntp.org";
 static const char* NTP_SERVER2 = "time.nist.gov";
-// CET/CEST example; adjust for your time zone if needed
-static const char* TZ_INFO     = "CET-1CEST,M3.5.0,M10.5.0/3";
+
+struct TzOption {
+  const char* label;
+  const char* tz;
+};
+
+static const TzOption TZ_OPTIONS[] = {
+  { "EU (CET/CEST)", "CET-1CEST,M3.5.0,M10.5.0/3" },
+  { "US (EST/EDT)",  "EST5EDT,M3.2.0,M11.1.0" },
+};
+static const size_t TZ_COUNT = sizeof(TZ_OPTIONS) / sizeof(TZ_OPTIONS[0]);
 
 // ================= GLOBALS =================
 
@@ -114,6 +123,17 @@ bool greenhouseGetTime(struct tm &outTime, bool &available) {
   outTime   = gTimeInfo;
   available = gTimeAvailable;
   return gTimeAvailable;
+}
+
+static const TzOption& currentTzOption() {
+  int idx = gConfig.tzIndex;
+  if (idx < 0) idx = 0;
+  if ((size_t)idx >= TZ_COUNT) idx = TZ_COUNT - 1;
+  return TZ_OPTIONS[idx];
+}
+
+const char* greenhouseTimezoneLabel() {
+  return currentTzOption().label;
 }
 
 // ================= Wi-Fi credentials (NVS) =================
@@ -225,6 +245,8 @@ void loadConfig() {
   gConfig.autoFan  = true;
   gConfig.autoPump = true;
 
+  gConfig.tzIndex  = 0;
+
   if (!prefs.begin("gh_cfg", true)) {
     Serial.println("[CFG] Preferences begin failed; using defaults");
     return;
@@ -249,6 +271,8 @@ void loadConfig() {
 
   gConfig.autoFan  = prefs.getBool("autoFan",  gConfig.autoFan);
   gConfig.autoPump = prefs.getBool("autoPump", gConfig.autoPump);
+
+  gConfig.tzIndex  = prefs.getInt("tzIdx",   gConfig.tzIndex);
 
   prefs.end();
 
@@ -278,6 +302,10 @@ void loadConfig() {
   gConfig.light1.offMinutes = constrain(gConfig.light1.offMinutes, 0, 24 * 60 - 1);
   gConfig.light2.onMinutes  = constrain(gConfig.light2.onMinutes,  0, 24 * 60 - 1);
   gConfig.light2.offMinutes = constrain(gConfig.light2.offMinutes, 0, 24 * 60 - 1);
+
+  if (gConfig.tzIndex < 0 || (size_t)gConfig.tzIndex >= TZ_COUNT) {
+    gConfig.tzIndex = 0;
+  }
 }
 
 void saveConfig() {
@@ -306,7 +334,76 @@ void saveConfig() {
   prefs.putBool("autoFan",  gConfig.autoFan);
   prefs.putBool("autoPump", gConfig.autoPump);
 
+  prefs.putInt("tzIdx", gConfig.tzIndex);
+
   prefs.end();
+}
+
+struct GrowProfilePreset {
+  const char* label;
+  float       fanOn;
+  float       fanOff;
+  int         fanHumOn;
+  int         fanHumOff;
+  int         soilDry;
+  int         soilWet;
+  unsigned long pumpMinOff;
+  unsigned long pumpMaxOn;
+  int         l1On;
+  int         l1Off;
+  int         l2On;
+  int         l2Off;
+  bool        lightsAuto;
+  bool        autoFan;
+  bool        autoPump;
+};
+
+static const GrowProfilePreset kGrowProfiles[] = {
+  { "Custom",       0,    0,   0,   0,   0,  0, 0,    0,    0,    0,    0,    0, false, false, false },
+  { "Seedling",    27.0, 25.0, 78,  68,  40, 55, 240, 20,  6*60, 24*60-1, 6*60, 24*60-1, true,  true,  true },
+  { "Vegetative",  28.0, 26.0, 75,  65,  38, 52, 300, 25,  6*60, 24*60-1, 6*60, 24*60-1, true,  true,  true },
+  { "Flowering",   27.0, 25.0, 72,  62,  35, 50, 420, 20,  8*60, 20*60,   8*60, 20*60,   true,  true,  true },
+};
+
+bool applyGrowProfile(int profileId, String &appliedName) {
+  if (profileId < 0 || (size_t)profileId >= (sizeof(kGrowProfiles)/sizeof(kGrowProfiles[0]))) {
+    return false;
+  }
+
+  const GrowProfilePreset &p = kGrowProfiles[profileId];
+  if (profileId == 0) {
+    appliedName = p.label;
+    return true; // Custom: no changes
+  }
+
+  gConfig.env.fanOnTemp        = p.fanOn;
+  gConfig.env.fanOffTemp       = p.fanOff;
+  gConfig.env.fanHumOn         = p.fanHumOn;
+  gConfig.env.fanHumOff        = p.fanHumOff;
+  gConfig.env.soilDryThreshold = p.soilDry;
+  gConfig.env.soilWetThreshold = p.soilWet;
+  gConfig.env.pumpMinOffSec    = p.pumpMinOff;
+  gConfig.env.pumpMaxOnSec     = p.pumpMaxOn;
+
+  gConfig.light1.onMinutes  = p.l1On;
+  gConfig.light1.offMinutes = p.l1Off;
+  gConfig.light1.enabled    = p.lightsAuto;
+
+  gConfig.light2.onMinutes  = p.l2On;
+  gConfig.light2.offMinutes = p.l2Off;
+  gConfig.light2.enabled    = p.lightsAuto;
+
+  gConfig.autoFan  = p.autoFan;
+  gConfig.autoPump = p.autoPump;
+
+  appliedName = p.label;
+  return true;
+}
+
+void applyTimezoneFromConfig() {
+  const TzOption &tz = currentTzOption();
+  setenv("TZ", tz.tz, 1);
+  tzset();
 }
 
 // ================= Time handling =================
@@ -636,7 +733,6 @@ void initHardware() {
   }
 
   // NTP / time zone
-  setenv("TZ", TZ_INFO, 1);
-  tzset();
+  applyTimezoneFromConfig();
   configTime(0, 0, NTP_SERVER1, NTP_SERVER2);
 }

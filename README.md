@@ -16,8 +16,9 @@ It reads:
 It displays status on a small **0.91" WE-DA-361 I²C OLED** and exposes a web UI (via Wi-Fi) with:
 
 - Dashboard (live sensors, relay states, modes)  
-- Configuration (thresholds, timings, light schedules, web-auth config)  
-- History charts (temperature, humidity, light states)  
+- Configuration (thresholds, timings, light schedules, grow profiles, timezone, web-auth config)
+- History charts (temperature, humidity, light states)
+- Live sparklines for sensors on the dashboard
 - **Wi-Fi configuration** (scan SSIDs, select, store SSID/password in NVS)  
 - **HTTP Basic Authentication** (credentials stored in NVS, configurable in UI)  
 - **Captive portal** for Wi-Fi onboarding in AP mode (auto-redirects to `/wifi`)  

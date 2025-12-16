@@ -198,6 +198,13 @@ The device supports:
   - If STA connection fails, or no SSID is configured:
     - Starts AP `EZgrow-Setup` (open by default).
     - AP IP is typically `192.168.4.1`.
+
+## Manual Tests
+
+- **Timezone change is applied only when updated**
+  1. Open `/config` and note the current timezone display.
+  2. Submit the form without changing the timezone and confirm that NTP/timezone updates are not triggered.
+  3. Change the timezone selection, save, and verify the device applies the new timezone once after the configuration is stored.
     - Captive portal redirects all requests to `/wifi`.
     - **No auth is required in AP-only mode** to simplify onboarding.
 

@@ -355,13 +355,24 @@ static void handleApiMode() {
   String id   = server.arg("id");
   bool autoOn = (server.arg("auto") == "1");
 
-  if      (id == "fan")    gConfig.autoFan        = autoOn;
-  else if (id == "pump")   gConfig.autoPump       = autoOn;
-  else if (id == "light1") gConfig.light1.enabled = autoOn;
-  else if (id == "light2") gConfig.light2.enabled = autoOn;
+  bool changed = false;
 
-  saveConfig();
-  server.send(200, "application/json", "{\"ok\":true}");
+  if (id == "fan") {
+    changed = (gConfig.autoFan != autoOn);
+    if (changed) gConfig.autoFan = autoOn;
+  } else if (id == "pump") {
+    changed = (gConfig.autoPump != autoOn);
+    if (changed) gConfig.autoPump = autoOn;
+  } else if (id == "light1") {
+    changed = (gConfig.light1.enabled != autoOn);
+    if (changed) gConfig.light1.enabled = autoOn;
+  } else if (id == "light2") {
+    changed = (gConfig.light2.enabled != autoOn);
+    if (changed) gConfig.light2.enabled = autoOn;
+  }
+
+  if (changed) saveConfig();
+  server.send(200, "application/json", String("{\"ok\":true,\"changed\":") + (changed ? "true" : "false") + "}");
 }
 
 // ================= Wi-Fi configuration page =================
@@ -614,12 +625,23 @@ static void handleMode() {
   String id   = server.arg("id");
   bool autoOn = (server.arg("auto") == "1");
 
-  if      (id == "fan")    gConfig.autoFan        = autoOn;
-  else if (id == "pump")   gConfig.autoPump       = autoOn;
-  else if (id == "light1") gConfig.light1.enabled = autoOn;
-  else if (id == "light2") gConfig.light2.enabled = autoOn;
+  bool changed = false;
 
-  saveConfig();
+  if (id == "fan") {
+    changed = (gConfig.autoFan != autoOn);
+    if (changed) gConfig.autoFan = autoOn;
+  } else if (id == "pump") {
+    changed = (gConfig.autoPump != autoOn);
+    if (changed) gConfig.autoPump = autoOn;
+  } else if (id == "light1") {
+    changed = (gConfig.light1.enabled != autoOn);
+    if (changed) gConfig.light1.enabled = autoOn;
+  } else if (id == "light2") {
+    changed = (gConfig.light2.enabled != autoOn);
+    if (changed) gConfig.light2.enabled = autoOn;
+  }
+
+  if (changed) saveConfig();
 
   server.sendHeader("Location", "/", true);
   server.send(302, "text/plain", "");

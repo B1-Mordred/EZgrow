@@ -19,6 +19,7 @@ It displays status on a small **0.91" WE-DA-361 I²C OLED** and exposes a web UI
 - Configuration (thresholds, timings, light schedules, grow profiles, timezone, web-auth config)
 - Timezone dropdown includes UTC, Europe/Berlin, Europe/London, US/Eastern, US/Central, US/Mountain, and US/Pacific options.
 - History charts (temperature, humidity, light states)
+- History chart labels use the device timezone when supported by the browser.
 - Live sparklines for sensors on the dashboard
 - Relay controls that disable while requests are processing, with toast feedback for mode/toggle actions
 - **Wi-Fi configuration** (scan SSIDs, select, store SSID/password in NVS)

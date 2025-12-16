@@ -91,6 +91,18 @@
     if (arr.length > 60) arr.shift();
   }
 
+  function formatTimeLabel(dt, timezone){
+    const baseOpts = { hour: "2-digit", minute:"2-digit" };
+
+    if (timezone){
+      try{
+        return dt.toLocaleTimeString([], { ...baseOpts, timeZone: timezone });
+      }catch{}
+    }
+
+    return dt.toLocaleTimeString([], baseOpts);
+  }
+
   function drawSpark(id, data, color, opts={}){
     const canvas = $(id);
     if (!canvas || !data.length) return;
@@ -156,9 +168,12 @@
     const styles = getComputedStyle(document.documentElement);
     const accent = styles.getPropertyValue("--accent").trim() || "#12a150";
     const muted  = styles.getPropertyValue("--muted").trim()  || "#6b7c85";
+    let statusTimezone = "";
 
     async function refresh(){
       const s = await apiGet(`/api/status?ts=${Date.now()}`);
+
+      statusTimezone = s.timezone || "";
 
       const tzLabel = s.timezone ? ` (${s.timezone})` : "";
       setText("#top-time", s.time_synced ? `${s.time}${tzLabel}` : "syncing…");
@@ -261,7 +276,7 @@
       const labels = pts.map((p, idx) => {
         if (p.t && p.t > 0){
           const dt = new Date(p.t * 1000);
-          return dt.toLocaleTimeString([], { hour: "2-digit", minute:"2-digit" });
+          return formatTimeLabel(dt, statusTimezone);
         }
         return String(idx);
       });
@@ -349,6 +364,6 @@
   });
 
   if (typeof window !== "undefined"){
-    window.__app = Object.assign({}, window.__app, { withRelayGuard });
+    window.__app = Object.assign({}, window.__app, { withRelayGuard, formatTimeLabel });
   }
 })();

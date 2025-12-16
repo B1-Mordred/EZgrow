@@ -20,9 +20,10 @@ It displays status on a small **0.91" WE-DA-361 I²C OLED** and exposes a web UI
 - Timezone dropdown includes UTC, Europe/Berlin, Europe/London, US/Eastern, US/Central, US/Mountain, and US/Pacific options.
 - History charts (temperature, humidity, light states)
 - Live sparklines for sensors on the dashboard
+- Relay controls that disable while requests are processing, with toast feedback for mode/toggle actions
 - **Wi-Fi configuration** (scan SSIDs, select, store SSID/password in NVS)
-- **HTTP Basic Authentication** (credentials stored in NVS, configurable in UI)  
-- **Captive portal** for Wi-Fi onboarding in AP mode (auto-redirects to `/wifi`)  
+- **HTTP Basic Authentication** (credentials stored in NVS, configurable in UI)
+- **Captive portal** for Wi-Fi onboarding in AP mode (auto-redirects to `/wifi`)
 
 All charts work **offline**, using **LittleFS** to serve Chart.js from the ESP32.
 

@@ -759,13 +759,11 @@ static void handleConfigGet() {
   page += "<div class='tab-panel' data-tab='system'>";
   page += "<div class='form-grid'>";
   page += "<div class='field'><label>Timezone</label><select name='tzIndex'>";
-  page += "<option value='0'"; if (tzIndex == 0) page += " selected"; page += ">UTC</option>";
-  page += "<option value='1'"; if (tzIndex == 1) page += " selected"; page += ">Europe/Berlin</option>";
-  page += "<option value='2'"; if (tzIndex == 2) page += " selected"; page += ">Europe/London</option>";
-  page += "<option value='3'"; if (tzIndex == 3) page += " selected"; page += ">US/Eastern</option>";
-  page += "<option value='4'"; if (tzIndex == 4) page += " selected"; page += ">US/Central</option>";
-  page += "<option value='5'"; if (tzIndex == 5) page += " selected"; page += ">US/Mountain</option>";
-  page += "<option value='6'"; if (tzIndex == 6) page += " selected"; page += ">US/Pacific</option>";
+  for (size_t i = 0; i < tzCount; i++) {
+    page += "<option value='" + String(i) + "'";
+    if ((int)i == tzIndex) page += " selected";
+    page += ">" + htmlEscape(greenhouseTimezoneLabelAt(i)) + "</option>";
+  }
   page += "</select><div class='small'>Applied immediately to NTP and time display.</div></div>";
   page += "</div>";
   page += "</div>";

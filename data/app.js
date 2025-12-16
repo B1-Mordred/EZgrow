@@ -44,6 +44,35 @@
     return r.json();
   }
 
+  async function withRelayGuard(id, action, opts={}){
+    const controls = [
+      $(`#seg-${id}-auto`),
+      $(`#seg-${id}-man`),
+      $(`#tog-${id}`),
+    ].filter(Boolean);
+
+    const prevDisabled = controls.map(el => el.disabled);
+    controls.forEach(el => {
+      el.disabled = true;
+      el.setAttribute("aria-busy", "true");
+    });
+
+    try{
+      const result = await action();
+      if (opts.successMessage) toast(opts.successMessage);
+      return result;
+    }catch(e){
+      const prefix = opts.errorMessage || "Request failed";
+      toast(`${prefix}: ${e.message}`);
+      throw e;
+    }finally{
+      controls.forEach((el, idx) => {
+        el.disabled = prevDisabled[idx];
+        el.removeAttribute("aria-busy");
+      });
+    }
+  }
+
   function setText(id, v){
     const el = $(id);
     if (el) el.textContent = v;
@@ -175,26 +204,44 @@
       if (segAuto){
         segAuto.addEventListener("click", async () => {
           try{
-            const res = await apiGet(`/api/mode?id=${encodeURIComponent(id)}&auto=1`);
-            if (res?.changed) await refresh();
-          }catch(e){ toast(`Mode change failed: ${e.message}`); }
+            const res = await withRelayGuard(
+              id,
+              async () => apiGet(`/api/mode?id=${encodeURIComponent(id)}&auto=1`),
+              { errorMessage:"Mode change failed" }
+            );
+            if (res?.changed){
+              toast("Mode updated");
+              await refresh();
+            }
+          }catch{}
         });
       }
       if (segMan){
         segMan.addEventListener("click", async () => {
           try{
-            const res = await apiGet(`/api/mode?id=${encodeURIComponent(id)}&auto=0`);
-            if (res?.changed) await refresh();
-          }catch(e){ toast(`Mode change failed: ${e.message}`); }
+            const res = await withRelayGuard(
+              id,
+              async () => apiGet(`/api/mode?id=${encodeURIComponent(id)}&auto=0`),
+              { errorMessage:"Mode change failed" }
+            );
+            if (res?.changed){
+              toast("Mode updated");
+              await refresh();
+            }
+          }catch{}
         });
       }
       if (tog){
         tog.addEventListener("click", async () => {
           if (tog.disabled) return;
           try{
-            await apiGet(`/api/toggle?id=${encodeURIComponent(id)}`);
+            await withRelayGuard(
+              id,
+              async () => apiGet(`/api/toggle?id=${encodeURIComponent(id)}`),
+              { errorMessage:"Toggle failed", successMessage:"Toggle sent" }
+            );
             await refresh();
-          }catch(e){ toast(`Toggle failed: ${e.message}`); }
+          }catch{}
         });
       }
     });
@@ -300,4 +347,8 @@
     initDashboard();
     initWifi();
   });
+
+  if (typeof window !== "undefined"){
+    window.__app = Object.assign({}, window.__app, { withRelayGuard });
+  }
 })();

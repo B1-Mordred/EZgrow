@@ -11,3 +11,4 @@
 - Apply Grow Profile presets atomically to avoid other form fields overwriting preset values.
 - Improved accessibility and rendering resilience with focus-visible outlines, aria-pressed states on segmented controls, and sparkline rendering guards for tiny canvases.
 - Added change detection for relay mode toggles, returning a `changed` flag from `/api/mode` and only persisting configuration when updates are requested.
+- Apply timezone configuration only when a new selection is provided, applying the change once after saving.

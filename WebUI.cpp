@@ -797,6 +797,9 @@ static void handleConfigGet() {
 static void handleConfigPost() {
   if (!requireAuth()) return;
 
+  int originalTzIndex = gConfig.tzIndex;
+  bool timezoneChanged = false;
+
   if (server.hasArg("applyProfile")) {
     int pid = server.arg("growProfile").toInt();
     String appliedName;
@@ -883,8 +886,10 @@ static void handleConfigPost() {
     size_t tzCount = greenhouseTimezoneCount();
     if (tz < 0) tz = 0;
     if (tzCount > 0 && (size_t)tz >= tzCount) tz = tzCount - 1;
-    gConfig.tzIndex = tz;
-    applyTimezoneFromConfig();
+    if (tz != originalTzIndex) {
+      gConfig.tzIndex = tz;
+      timezoneChanged = true;
+    }
   }
 
   // Web UI auth: update credentials in memory and NVS
@@ -915,7 +920,9 @@ static void handleConfigPost() {
   saveConfig();
   saveWebAuthConfig(sWebAuthUser, sWebAuthPass);
 
-  applyTimezoneFromConfig();
+  if (timezoneChanged) {
+    applyTimezoneFromConfig();
+  }
 
   server.sendHeader("Location", "/config", true);
   server.send(302, "text/plain", "");

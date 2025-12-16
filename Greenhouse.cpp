@@ -379,6 +379,26 @@ static const GrowProfilePreset kGrowProfiles[] = {
   { "Flowering",   27.0, 25.0, 72,  62,  35, 50, 420, 20,  8*60, 20*60,   8*60, 20*60,   true,  true,  true },
 };
 
+static GrowProfileInfo profileInfoFromPreset(const GrowProfilePreset &p){
+  GrowProfileInfo info;
+  info.label = p.label;
+  info.env = {
+    p.fanOn,
+    p.fanOff,
+    p.fanHumOn,
+    p.fanHumOff,
+    p.soilDry,
+    p.soilWet,
+    p.pumpMinOff,
+    p.pumpMaxOn,
+  };
+  info.light1 = { p.l1On, p.l1Off, p.lightsAuto };
+  info.light2 = { p.l2On, p.l2Off, p.lightsAuto };
+  info.autoFan = p.autoFan;
+  info.autoPump = p.autoPump;
+  return info;
+}
+
 bool applyGrowProfile(int profileId, String &appliedName) {
   if (profileId < 0 || (size_t)profileId >= (sizeof(kGrowProfiles)/sizeof(kGrowProfiles[0]))) {
     return false;
@@ -412,6 +432,23 @@ bool applyGrowProfile(int profileId, String &appliedName) {
 
   appliedName = p.label;
   return true;
+}
+
+size_t growProfileCount(){
+  return sizeof(kGrowProfiles) / sizeof(kGrowProfiles[0]);
+}
+
+const GrowProfileInfo* growProfileInfoAt(size_t idx){
+  static GrowProfileInfo infos[sizeof(kGrowProfiles) / sizeof(kGrowProfiles[0])];
+  static bool initialized = false;
+  if (!initialized){
+    for (size_t i = 0; i < sizeof(kGrowProfiles) / sizeof(kGrowProfiles[0]); i++) {
+      infos[i] = profileInfoFromPreset(kGrowProfiles[i]);
+    }
+    initialized = true;
+  }
+  if (idx >= (sizeof(kGrowProfiles) / sizeof(kGrowProfiles[0]))) return nullptr;
+  return &infos[idx];
 }
 
 void applyTimezoneFromConfig() {

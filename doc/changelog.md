@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+- Added dashboard stale detection with reconnect banner, throttled error toasts, and sensor sparklines that clear after repeated invalid readings.
+- Provided AUTO block reason feedback for manual toggles (with pump-on confirmation) and improved config UI with grow profile previews plus current time display.
 - Added Wi-Fi connection timeout with automatic fallback access point and periodic retries to keep the main loop responsive.
 - Persist Wi-Fi and basic-auth credentials in Preferences and expose them on `/config`, including reset links.
 - Protected configuration and relay-changing routes with optional HTTP Basic Auth challenges.

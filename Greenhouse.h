@@ -31,6 +31,15 @@ struct GreenhouseConfig {
   int           tzIndex; // selectable time zone index
 };
 
+struct GrowProfileInfo {
+  const char* label;
+  EnvConfig   env;
+  LightSchedule light1;
+  LightSchedule light2;
+  bool autoFan;
+  bool autoPump;
+};
+
 // ========== Runtime state structures ==========
 
 struct SensorState {
@@ -104,6 +113,8 @@ void applyTimezoneFromConfig();
 // Apply a grow profile preset by ID (0=Custom/no-op, 1=Seedling, 2=Vegetative, 3=Flowering)
 // Returns true if applied and fills appliedName with the profile label.
 bool applyGrowProfile(int profileId, String &appliedName);
+size_t growProfileCount();
+const GrowProfileInfo* growProfileInfoAt(size_t idx);
 
 // Convenience: convert (minutes since midnight) to "HH:MM"
 String minutesToTimeStr(int minutes);

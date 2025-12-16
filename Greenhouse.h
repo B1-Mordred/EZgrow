@@ -73,6 +73,7 @@ extern bool          gHistoryFull;
 // Time state getter
 bool greenhouseGetTime(struct tm &outTime, bool &available);
 const char* greenhouseTimezoneLabel();
+const char* greenhouseTimezoneLabelAt(size_t idx);
 size_t greenhouseTimezoneCount();
 
 // ========== Hardware / logic API ==========

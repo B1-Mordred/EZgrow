@@ -141,6 +141,11 @@ const char* greenhouseTimezoneLabel() {
   return currentTzOption().label;
 }
 
+const char* greenhouseTimezoneLabelAt(size_t idx) {
+  if (idx >= TZ_COUNT) return "";
+  return TZ_OPTIONS[idx].label;
+}
+
 size_t greenhouseTimezoneCount() {
   return TZ_COUNT;
 }

@@ -173,16 +173,16 @@
       if (segAuto){
         segAuto.addEventListener("click", async () => {
           try{
-            await apiGet(`/api/mode?id=${encodeURIComponent(id)}&auto=1`);
-            await refresh();
+            const res = await apiGet(`/api/mode?id=${encodeURIComponent(id)}&auto=1`);
+            if (res?.changed) await refresh();
           }catch(e){ toast(`Mode change failed: ${e.message}`); }
         });
       }
       if (segMan){
         segMan.addEventListener("click", async () => {
           try{
-            await apiGet(`/api/mode?id=${encodeURIComponent(id)}&auto=0`);
-            await refresh();
+            const res = await apiGet(`/api/mode?id=${encodeURIComponent(id)}&auto=0`);
+            if (res?.changed) await refresh();
           }catch(e){ toast(`Mode change failed: ${e.message}`); }
         });
       }

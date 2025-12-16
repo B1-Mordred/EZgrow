@@ -21,6 +21,7 @@ It displays status on a small **0.91" WE-DA-361 I²C OLED** and exposes a web UI
 - History charts (temperature, humidity, light states)
 - History chart labels use the device timezone when supported by the browser.
 - Live sparklines for sensors on the dashboard
+- Grow profile tab with preset previews plus system tab showing current device time
 - Relay controls that disable while requests are processing, with toast feedback for mode/toggle actions
 - **Wi-Fi configuration** (scan SSIDs, select, store SSID/password in NVS)
 - **HTTP Basic Authentication** (credentials stored in NVS, configurable in UI)

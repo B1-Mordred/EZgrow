@@ -331,17 +331,33 @@ static void handleApiToggle() {
   String id = server.arg("id");
 
   bool changed = false;
+  String reason = "";
   if (id == "light1" && !gConfig.light1.enabled) {
     gRelays.light1 = !gRelays.light1; changed = true;
+  } else if (id == "light1") {
+    reason = "AUTO";
   } else if (id == "light2" && !gConfig.light2.enabled) {
     gRelays.light2 = !gRelays.light2; changed = true;
+  } else if (id == "light2") {
+    reason = "AUTO";
   } else if (id == "fan" && !gConfig.autoFan) {
     gRelays.fan = !gRelays.fan; changed = true;
+  } else if (id == "fan") {
+    reason = "AUTO";
   } else if (id == "pump" && !gConfig.autoPump) {
     gRelays.pump = !gRelays.pump; changed = true;
+  } else if (id == "pump") {
+    reason = "AUTO";
   }
 
-  server.send(200, "application/json", String("{\"ok\":true,\"changed\":") + (changed ? "true" : "false") + "}");
+  String json = String("{\"ok\":true,\"changed\":") + (changed ? "true" : "false");
+  if (!changed && reason.length() > 0) {
+    json += ",\"reason\":\"";
+    json += jsonEscape(reason);
+    json += "\"";
+  }
+  json += "}";
+  server.send(200, "application/json", json);
 }
 
 static void handleApiMode() {
@@ -747,6 +763,21 @@ static void handleConfigGet() {
   page += "</select><div class='small'>Apply preset thresholds, schedules, and automation defaults.</div></div>";
   page += "<div class='field'><label>&nbsp;</label><button class='btn primary' type='submit' name='applyProfile' value='1'>Apply preset</button><div class='small'>Values are saved immediately.</div></div>";
   page += "</div>";
+  page += "<div class='small' style='margin-top:10px'>Preset preview:</div>";
+  page += "<table class='table profile-summary' style='margin-top:6px'>";
+  page += "<tr><th>Preset</th><th>Fan on/off (°C)</th><th>Hum on/off (%)</th><th>Soil dry/wet (%)</th><th>Pump OFF/ON (s)</th><th>Light window</th><th>Fan/Pump mode</th></tr>";
+  for (size_t i = 0; i < growProfileCount(); i++) {
+    const GrowProfileInfo* info = growProfileInfoAt(i);
+    if (!info) continue;
+    page += "<tr><td>" + htmlEscape(info->label) + "</td>";
+    page += "<td>" + String(info->env.fanOnTemp, 1) + " / " + String(info->env.fanOffTemp, 1) + "</td>";
+    page += "<td>" + String(info->env.fanHumOn) + " / " + String(info->env.fanHumOff) + "</td>";
+    page += "<td>" + String(info->env.soilDryThreshold) + " / " + String(info->env.soilWetThreshold) + "</td>";
+    page += "<td>" + String(info->env.pumpMinOffSec) + " / " + String(info->env.pumpMaxOnSec) + "</td>";
+    page += "<td>" + minutesToTimeStrSafe(info->light1.onMinutes) + "–" + minutesToTimeStrSafe(info->light1.offMinutes) + "</td>";
+    page += "<td>Fan " + htmlAuto(info->autoFan) + " · Pump " + htmlAuto(info->autoPump) + "</td></tr>";
+  }
+  page += "</table>";
   page += "</div>";
 
   // SYSTEM
@@ -758,6 +789,7 @@ static void handleConfigGet() {
 
   page += "<div class='tab-panel' data-tab='system'>";
   page += "<div class='form-grid'>";
+  page += "<div class='field'><label>Current local time</label><div class='pill muted' id='cfg-time'>—</div></div>";
   page += "<div class='field'><label>Timezone</label><select name='tzIndex'>";
   for (size_t i = 0; i < tzCount; i++) {
     page += "<option value='" + String(i) + "'";

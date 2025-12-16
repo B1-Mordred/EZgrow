@@ -85,8 +85,20 @@
     s2: [],
   };
 
-  function pushSpark(arr, v){
-    if (v == null || Number.isNaN(v)) return;
+  const sparkInvalid = {
+    temp: 0,
+    hum:  0,
+    s1:   0,
+    s2:   0,
+  };
+
+  function pushSpark(key, arr, v){
+    if (v == null || Number.isNaN(v)){
+      sparkInvalid[key] = (sparkInvalid[key] || 0) + 1;
+      if (sparkInvalid[key] >= 3) arr.length = 0;
+      return;
+    }
+    sparkInvalid[key] = 0;
     arr.push(v);
     if (arr.length > 60) arr.shift();
   }
@@ -169,10 +181,23 @@
     const accent = styles.getPropertyValue("--accent").trim() || "#12a150";
     const muted  = styles.getPropertyValue("--muted").trim()  || "#6b7c85";
     let statusTimezone = "";
+    const relayStates = {};
+    const pollIntervalMs = 2000;
+    const staleAfterMs = 10000;
+    let lastOkTs = Date.now();
+    let consecutiveErrors = 0;
+
+    function setStaleState(on){
+      document.body.classList.toggle("stale", !!on);
+      if (on) setText("#top-conn", "reconnecting…");
+    }
 
     async function refresh(){
       const s = await apiGet(`/api/status?ts=${Date.now()}`);
 
+      lastOkTs = Date.now();
+      consecutiveErrors = 0;
+      setStaleState(false);
       statusTimezone = s.timezone || "";
 
       const tzLabel = s.timezone ? ` (${s.timezone})` : "";
@@ -191,10 +216,10 @@
       setText("#v-s1",  (s.sensors?.soil1 ?? 0).toString());
       setText("#v-s2",  (s.sensors?.soil2 ?? 0).toString());
 
-      pushSpark(sparkData.temp,  s.sensors?.temp_c);
-      pushSpark(sparkData.hum,   s.sensors?.hum_rh);
-      pushSpark(sparkData.s1,    s.sensors?.soil1);
-      pushSpark(sparkData.s2,    s.sensors?.soil2);
+      pushSpark("temp", sparkData.temp,  s.sensors?.temp_c);
+      pushSpark("hum",  sparkData.hum,   s.sensors?.hum_rh);
+      pushSpark("s1",   sparkData.s1,    s.sensors?.soil1);
+      pushSpark("s2",   sparkData.s2,    s.sensors?.soil2);
 
       drawSpark("#spark-temp", sparkData.temp, accent, { min: 0,  max: 50 });
       drawSpark("#spark-hum",  sparkData.hum,  muted,  { min: 0,  max: 100 });
@@ -204,6 +229,7 @@
       for (const id of ["light1","light2","fan","pump"]){
         const r = s.relays?.[id];
         if (!r) continue;
+        relayStates[id] = !!r.state;
         setBadge(id, r.state, r.auto);
         const sched = $(`#sched-${id}`);
         if (sched && r.schedule) sched.textContent = r.schedule;
@@ -249,13 +275,22 @@
       if (tog){
         tog.addEventListener("click", async () => {
           if (tog.disabled) return;
+          if (id === "pump" && relayStates.pump === false){
+            const proceed = confirm("Turn pump ON? This will start water flow.");
+            if (!proceed) return;
+          }
           try{
-            await withRelayGuard(
+            const res = await withRelayGuard(
               id,
               async () => apiGet(`/api/toggle?id=${encodeURIComponent(id)}`),
-              { errorMessage:"Toggle failed", successMessage:"Toggle sent" }
+              { errorMessage:"Toggle failed" }
             );
-            await refresh();
+            if (res?.changed){
+              toast("Toggle sent");
+              await refresh();
+            } else if (res?.reason === "AUTO"){
+              toast("Switch to MAN to toggle");
+            }
           }catch{}
         });
       }
@@ -321,12 +356,31 @@
       chartsInit = true;
     }
 
+    const poll = async () => {
+      try{
+        await refresh();
+        await initCharts();
+      }catch(e){
+        consecutiveErrors++;
+        if (consecutiveErrors % 3 === 0) toast(`Status failed: ${e.message}`);
+        setStaleState(true);
+      }
+      if (Date.now() - lastOkTs > staleAfterMs) setStaleState(true);
+    };
+
+    try{ await poll(); }catch{}
+    setInterval(poll, pollIntervalMs);
+  }
+
+  async function initConfig(){
+    if (document.body.dataset.page !== "config") return;
+
     try{
-      await refresh();
-      await initCharts();
-      setInterval(async ()=>{ try{ await refresh(); }catch{} }, 2000);
+      const s = await apiGet(`/api/status?ts=${Date.now()}`);
+      const tzLabel = s.timezone ? ` (${s.timezone})` : "";
+      setText("#cfg-time", s.time_synced ? `${s.time}${tzLabel}` : "syncing…");
     }catch(e){
-      toast(`Status failed: ${e.message}`);
+      console.warn("Config status fetch failed", e);
     }
   }
 
@@ -360,10 +414,11 @@
   document.addEventListener("DOMContentLoaded", () => {
     initTabs();
     initDashboard();
+    initConfig();
     initWifi();
   });
 
   if (typeof window !== "undefined"){
-    window.__app = Object.assign({}, window.__app, { withRelayGuard, formatTimeLabel });
+    window.__app = Object.assign({}, window.__app, { withRelayGuard, formatTimeLabel, pushSpark });
   }
 })();

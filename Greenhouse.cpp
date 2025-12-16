@@ -38,8 +38,13 @@ struct TzOption {
 };
 
 static const TzOption TZ_OPTIONS[] = {
-  { "EU (CET/CEST)", "CET-1CEST,M3.5.0,M10.5.0/3" },
-  { "US (EST/EDT)",  "EST5EDT,M3.2.0,M11.1.0" },
+  { "UTC",           "UTC0" },
+  { "Europe/Berlin", "CET-1CEST,M3.5.0,M10.5.0/3" },
+  { "Europe/London", "GMT0BST,M3.5.0/1,M10.5.0" },
+  { "US/Eastern",    "EST5EDT,M3.2.0,M11.1.0" },
+  { "US/Central",    "CST6CDT,M3.2.0,M11.1.0" },
+  { "US/Mountain",   "MST7MDT,M3.2.0,M11.1.0" },
+  { "US/Pacific",    "PST8PDT,M3.2.0,M11.1.0" },
 };
 static const size_t TZ_COUNT = sizeof(TZ_OPTIONS) / sizeof(TZ_OPTIONS[0]);
 
@@ -134,6 +139,10 @@ static const TzOption& currentTzOption() {
 
 const char* greenhouseTimezoneLabel() {
   return currentTzOption().label;
+}
+
+size_t greenhouseTimezoneCount() {
+  return TZ_COUNT;
 }
 
 // ================= Wi-Fi credentials (NVS) =================

@@ -728,11 +728,22 @@ static void handleConfigGet() {
   page += "</div>";
 
   // SYSTEM
+  int tzIndex = gConfig.tzIndex;
+  size_t tzCount = greenhouseTimezoneCount();
+  if (tzIndex < 0) tzIndex = 0;
+  if (tzCount > 0 && (size_t)tzIndex >= tzCount) tzIndex = tzCount - 1;
+  gConfig.tzIndex = tzIndex;
+
   page += "<div class='tab-panel' data-tab='system'>";
   page += "<div class='form-grid'>";
   page += "<div class='field'><label>Timezone</label><select name='tzIndex'>";
-  page += "<option value='0'"; if (gConfig.tzIndex == 0) page += " selected"; page += ">EU (CET/CEST)</option>";
-  page += "<option value='1'"; if (gConfig.tzIndex == 1) page += " selected"; page += ">US (EST/EDT)</option>";
+  page += "<option value='0'"; if (tzIndex == 0) page += " selected"; page += ">UTC</option>";
+  page += "<option value='1'"; if (tzIndex == 1) page += " selected"; page += ">Europe/Berlin</option>";
+  page += "<option value='2'"; if (tzIndex == 2) page += " selected"; page += ">Europe/London</option>";
+  page += "<option value='3'"; if (tzIndex == 3) page += " selected"; page += ">US/Eastern</option>";
+  page += "<option value='4'"; if (tzIndex == 4) page += " selected"; page += ">US/Central</option>";
+  page += "<option value='5'"; if (tzIndex == 5) page += " selected"; page += ">US/Mountain</option>";
+  page += "<option value='6'"; if (tzIndex == 6) page += " selected"; page += ">US/Pacific</option>";
   page += "</select><div class='small'>Applied immediately to NTP and time display.</div></div>";
   page += "</div>";
   page += "</div>";
@@ -764,91 +775,94 @@ static void handleConfigGet() {
 static void handleConfigPost() {
   if (!requireAuth()) return;
 
-  bool appliedProfile = false;
-  String appliedName;
   if (server.hasArg("applyProfile")) {
     int pid = server.arg("growProfile").toInt();
+    String appliedName;
     if (applyGrowProfile(pid, appliedName)) {
-      appliedProfile = true;
+      saveConfig();
+      server.sendHeader("Location", String("/config?appliedProfile=") + urlencode(appliedName), true);
+      server.send(302, "text/plain", "");
+      return;
     }
   }
 
-  if (!appliedProfile) {
-    // Env thresholds
-    if (server.hasArg("fanOn")) {
-      float v = server.arg("fanOn").toFloat();
-      if (v > 0 && v < 80) gConfig.env.fanOnTemp = v;
-    }
-    if (server.hasArg("fanOff")) {
-      float v = server.arg("fanOff").toFloat();
-      if (v > 0 && v < 80) gConfig.env.fanOffTemp = v;
-    }
-    if (gConfig.env.fanOffTemp >= gConfig.env.fanOnTemp) {
-      gConfig.env.fanOnTemp  = 28.0f;
-      gConfig.env.fanOffTemp = 26.0f;
-    }
-
-    if (server.hasArg("fanHumOn")) {
-      int v = server.arg("fanHumOn").toInt();
-      gConfig.env.fanHumOn = constrain(v, 0, 100);
-    }
-    if (server.hasArg("fanHumOff")) {
-      int v = server.arg("fanHumOff").toInt();
-      gConfig.env.fanHumOff = constrain(v, 0, 100);
-    }
-    if (gConfig.env.fanHumOff >= gConfig.env.fanHumOn) {
-      gConfig.env.fanHumOn  = 80;
-      gConfig.env.fanHumOff = 70;
-    }
-
-    if (server.hasArg("soilDry")) {
-      int v = server.arg("soilDry").toInt();
-      gConfig.env.soilDryThreshold = constrain(v, 0, 100);
-    }
-    if (server.hasArg("soilWet")) {
-      int v = server.arg("soilWet").toInt();
-      gConfig.env.soilWetThreshold = constrain(v, 0, 100);
-    }
-    if (gConfig.env.soilWetThreshold <= gConfig.env.soilDryThreshold) {
-      gConfig.env.soilDryThreshold = 35;
-      gConfig.env.soilWetThreshold = 45;
-    }
-
-    if (server.hasArg("pumpOff")) {
-      unsigned long v = server.arg("pumpOff").toInt();
-      if (v >= 10 && v <= 36000) gConfig.env.pumpMinOffSec = v;
-    }
-    if (server.hasArg("pumpOn")) {
-      unsigned long v = server.arg("pumpOn").toInt();
-      if (v >= 5 && v <= 3600) gConfig.env.pumpMaxOnSec = v;
-    }
-
-    // Light schedules
-    gConfig.light1.enabled = server.hasArg("l1Auto");
-    gConfig.light2.enabled = server.hasArg("l2Auto");
-
-    if (server.hasArg("l1On"))  gConfig.light1.onMinutes  = parseTimeToMinutes(server.arg("l1On"),  gConfig.light1.onMinutes);
-    if (server.hasArg("l1Off")) gConfig.light1.offMinutes = parseTimeToMinutes(server.arg("l1Off"), gConfig.light1.offMinutes);
-    if (server.hasArg("l2On"))  gConfig.light2.onMinutes  = parseTimeToMinutes(server.arg("l2On"),  gConfig.light2.onMinutes);
-    if (server.hasArg("l2Off")) gConfig.light2.offMinutes = parseTimeToMinutes(server.arg("l2Off"), gConfig.light2.offMinutes);
-
-    if (gConfig.light1.onMinutes == gConfig.light1.offMinutes) {
-      gConfig.light1.onMinutes  = 8 * 60;
-      gConfig.light1.offMinutes = 20 * 60;
-    }
-    if (gConfig.light2.onMinutes == gConfig.light2.offMinutes) {
-      gConfig.light2.onMinutes  = 8 * 60;
-      gConfig.light2.offMinutes = 20 * 60;
-    }
-
-    gConfig.autoFan  = server.hasArg("autoFan");
-    gConfig.autoPump = server.hasArg("autoPump");
+  // Env thresholds
+  if (server.hasArg("fanOn")) {
+    float v = server.arg("fanOn").toFloat();
+    if (v > 0 && v < 80) gConfig.env.fanOnTemp = v;
   }
+  if (server.hasArg("fanOff")) {
+    float v = server.arg("fanOff").toFloat();
+    if (v > 0 && v < 80) gConfig.env.fanOffTemp = v;
+  }
+  if (gConfig.env.fanOffTemp >= gConfig.env.fanOnTemp) {
+    gConfig.env.fanOnTemp  = 28.0f;
+    gConfig.env.fanOffTemp = 26.0f;
+  }
+
+  if (server.hasArg("fanHumOn")) {
+    int v = server.arg("fanHumOn").toInt();
+    gConfig.env.fanHumOn = constrain(v, 0, 100);
+  }
+  if (server.hasArg("fanHumOff")) {
+    int v = server.arg("fanHumOff").toInt();
+    gConfig.env.fanHumOff = constrain(v, 0, 100);
+  }
+  if (gConfig.env.fanHumOff >= gConfig.env.fanHumOn) {
+    gConfig.env.fanHumOn  = 80;
+    gConfig.env.fanHumOff = 70;
+  }
+
+  if (server.hasArg("soilDry")) {
+    int v = server.arg("soilDry").toInt();
+    gConfig.env.soilDryThreshold = constrain(v, 0, 100);
+  }
+  if (server.hasArg("soilWet")) {
+    int v = server.arg("soilWet").toInt();
+    gConfig.env.soilWetThreshold = constrain(v, 0, 100);
+  }
+  if (gConfig.env.soilWetThreshold <= gConfig.env.soilDryThreshold) {
+    gConfig.env.soilDryThreshold = 35;
+    gConfig.env.soilWetThreshold = 45;
+  }
+
+  if (server.hasArg("pumpOff")) {
+    unsigned long v = server.arg("pumpOff").toInt();
+    if (v >= 10 && v <= 36000) gConfig.env.pumpMinOffSec = v;
+  }
+  if (server.hasArg("pumpOn")) {
+    unsigned long v = server.arg("pumpOn").toInt();
+    if (v >= 5 && v <= 3600) gConfig.env.pumpMaxOnSec = v;
+  }
+
+  // Light schedules
+  gConfig.light1.enabled = server.hasArg("l1Auto");
+  gConfig.light2.enabled = server.hasArg("l2Auto");
+
+  if (server.hasArg("l1On"))  gConfig.light1.onMinutes  = parseTimeToMinutes(server.arg("l1On"),  gConfig.light1.onMinutes);
+  if (server.hasArg("l1Off")) gConfig.light1.offMinutes = parseTimeToMinutes(server.arg("l1Off"), gConfig.light1.offMinutes);
+  if (server.hasArg("l2On"))  gConfig.light2.onMinutes  = parseTimeToMinutes(server.arg("l2On"),  gConfig.light2.onMinutes);
+  if (server.hasArg("l2Off")) gConfig.light2.offMinutes = parseTimeToMinutes(server.arg("l2Off"), gConfig.light2.offMinutes);
+
+  if (gConfig.light1.onMinutes == gConfig.light1.offMinutes) {
+    gConfig.light1.onMinutes  = 8 * 60;
+    gConfig.light1.offMinutes = 20 * 60;
+  }
+  if (gConfig.light2.onMinutes == gConfig.light2.offMinutes) {
+    gConfig.light2.onMinutes  = 8 * 60;
+    gConfig.light2.offMinutes = 20 * 60;
+  }
+
+  gConfig.autoFan  = server.hasArg("autoFan");
+  gConfig.autoPump = server.hasArg("autoPump");
 
   if (server.hasArg("tzIndex")) {
     int tz = server.arg("tzIndex").toInt();
-    if (tz >= 0) gConfig.tzIndex = tz;
-    if (gConfig.tzIndex > 1) gConfig.tzIndex = 1;
+    size_t tzCount = greenhouseTimezoneCount();
+    if (tz < 0) tz = 0;
+    if (tzCount > 0 && (size_t)tz >= tzCount) tz = tzCount - 1;
+    gConfig.tzIndex = tz;
+    applyTimezoneFromConfig();
   }
 
   // Web UI auth: update credentials in memory and NVS
@@ -881,12 +895,7 @@ static void handleConfigPost() {
 
   applyTimezoneFromConfig();
 
-  String redirectUrl = "/config";
-  if (appliedProfile && appliedName.length()) {
-    redirectUrl += "?appliedProfile=" + urlencode(appliedName);
-  }
-
-  server.sendHeader("Location", redirectUrl, true);
+  server.sendHeader("Location", "/config", true);
   server.send(302, "text/plain", "");
 }
 

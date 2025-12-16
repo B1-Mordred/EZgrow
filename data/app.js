@@ -69,6 +69,7 @@
     const dpr = window.devicePixelRatio || 1;
     const w = canvas.clientWidth || 120;
     const h = canvas.clientHeight || 38;
+    if (w < 10 || h < 10) return;
     canvas.width = w * dpr;
     canvas.height = h * dpr;
     ctx.scale(dpr, dpr);
@@ -109,6 +110,8 @@
     if (segA && segM){
       segA.classList.toggle("active", !!auto);
       segM.classList.toggle("active", !auto);
+      segA.setAttribute("aria-pressed", auto ? "true" : "false");
+      segM.setAttribute("aria-pressed", auto ? "false" : "true");
     }
     if (tog){
       tog.disabled = !!auto;

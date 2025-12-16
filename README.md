@@ -392,28 +392,26 @@ Main interface (Basic Auth protected in STA mode):
 
 ### 4.2 Configuration (`/config`)
 
-Protected by Basic Auth in STA mode:
+Protected by Basic Auth in STA mode. The page uses tabs:
 
-- Fan ON temperature (°C).
-- Fan OFF temperature (°C).
-- Fan ON humidity (%RH).
-- Fan OFF humidity (%RH).
-- Soil DRY threshold (%).
-- Soil WET threshold (%).
-- Pump minimum OFF time (seconds).
-- Pump maximum ON time (seconds).
-- Light 1 schedule:
-  - Use schedule (checkbox).
-  - ON time, OFF time (`<input type="time">`).
-- Light 2 schedule:
-  - Use schedule (checkbox).
-  - ON time, OFF time.
-- AUTO/MANUAL checkboxes for:
-  - Fan.
-  - Pump.
-- **Web UI authentication**:
-  - Username (empty → disable auth).
-  - Password (leave blank to keep current, non-empty to change).
+- **Environment**
+  - Fan ON/OFF temperature thresholds (°C).
+  - Fan ON/OFF humidity thresholds (%RH).
+  - Soil DRY/WET thresholds (%).
+  - Pump minimum OFF time and maximum ON time (seconds).
+- **Lights**
+  - Use schedule (AUTO) vs MANUAL toggle for each light.
+  - ON/OFF times for Light 1 and Light 2 (`<input type="time">`).
+- **Automation**
+  - AUTO/MANUAL toggles for the fan and pump.
+- **Grow profile**
+  - Select and apply presets (Seedling, Vegetative, Flowering) that set thresholds, schedules, and default automation modes.
+  - Preview table shows preset values before applying.
+- **System**
+  - Displays the current device time.
+  - Timezone dropdown (UTC, Europe/Berlin, Europe/London, US/Eastern, US/Central, US/Mountain, US/Pacific). Changes apply immediately to NTP/time display.
+- **Security**
+  - HTTP Basic Auth credentials: username (empty disables auth) and password (blank keeps existing password).
 
 On submit:
 

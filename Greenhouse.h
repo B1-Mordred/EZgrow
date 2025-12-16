@@ -28,6 +28,7 @@ struct GreenhouseConfig {
   LightSchedule light2;
   bool          autoFan;
   bool          autoPump;
+  int           tzIndex; // selectable time zone index
 };
 
 // ========== Runtime state structures ==========
@@ -71,6 +72,7 @@ extern bool          gHistoryFull;
 
 // Time state getter
 bool greenhouseGetTime(struct tm &outTime, bool &available);
+const char* greenhouseTimezoneLabel();
 
 // ========== Hardware / logic API ==========
 
@@ -95,6 +97,11 @@ void logHistorySample();
 // Load / save configuration (env thresholds, pump timings, light schedules)
 void loadConfig();
 void saveConfig();
+void applyTimezoneFromConfig();
+
+// Apply a grow profile preset by ID (0=Custom/no-op, 1=Seedling, 2=Vegetative, 3=Flowering)
+// Returns true if applied and fills appliedName with the profile label.
+bool applyGrowProfile(int profileId, String &appliedName);
 
 // Convenience: convert (minutes since midnight) to "HH:MM"
 String minutesToTimeStr(int minutes);

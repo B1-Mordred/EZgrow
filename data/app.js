@@ -49,11 +49,52 @@
     if (el) el.textContent = v;
   }
 
+  const sparkData = {
+    temp: [],
+    hum: [],
+    s1: [],
+    s2: [],
+  };
+
+  function pushSpark(arr, v){
+    if (v == null || Number.isNaN(v)) return;
+    arr.push(v);
+    if (arr.length > 60) arr.shift();
+  }
+
+  function drawSpark(id, data, color){
+    const canvas = $(id);
+    if (!canvas || !data.length) return;
+    const ctx = canvas.getContext("2d");
+    const dpr = window.devicePixelRatio || 1;
+    const w = canvas.clientWidth || 120;
+    const h = canvas.clientHeight || 38;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, w, h);
+
+    const min = Math.min(...data);
+    const max = Math.max(...data);
+    const range = Math.max(1e-3, max - min);
+
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    data.forEach((v, idx) => {
+      const x = (idx / Math.max(1, data.length - 1)) * (w - 6) + 3;
+      const y = h - ((v - min) / range) * (h - 6) - 3;
+      if (idx === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  }
+
   function setBadge(id, on, auto){
     const bState = $(`#b-${id}`);
     const bMode  = $(`#m-${id}`);
-    const sw     = $(`#sw-${id}`);
-    const btn    = $(`#btn-${id}`);
+    const segA   = $(`#seg-${id}-auto`);
+    const segM   = $(`#seg-${id}-man`);
+    const tog    = $(`#tog-${id}`);
 
     if (bState){
       bState.textContent = on ? "ON" : "OFF";
@@ -65,22 +106,28 @@
       bMode.classList.toggle("auto", !!auto);
       bMode.classList.toggle("man",  !auto);
     }
-    if (sw){
-      sw.checked = !!on;
-      sw.disabled = !!auto;
+    if (segA && segM){
+      segA.classList.toggle("active", !!auto);
+      segM.classList.toggle("active", !auto);
     }
-    if (btn){
-      btn.textContent = auto ? "Switch to MANUAL" : "Switch to AUTO";
+    if (tog){
+      tog.disabled = !!auto;
+      tog.textContent = on ? "Turn OFF" : "Turn ON";
     }
   }
 
   async function initDashboard(){
     if (document.body.dataset.page !== "dashboard") return;
 
+    const styles = getComputedStyle(document.documentElement);
+    const accent = styles.getPropertyValue("--accent").trim() || "#12a150";
+    const muted  = styles.getPropertyValue("--muted").trim()  || "#6b7c85";
+
     async function refresh(){
       const s = await apiGet(`/api/status?ts=${Date.now()}`);
 
-      setText("#top-time", s.time_synced ? s.time : "syncing…");
+      const tzLabel = s.timezone ? ` (${s.timezone})` : "";
+      setText("#top-time", s.time_synced ? `${s.time}${tzLabel}` : "syncing…");
 
       if (s.wifi?.connected){
         setText("#top-conn", `${s.wifi.ssid} (${s.wifi.rssi} dBm) · ${s.wifi.ip}`);
@@ -95,6 +142,16 @@
       setText("#v-s1",  (s.sensors?.soil1 ?? 0).toString());
       setText("#v-s2",  (s.sensors?.soil2 ?? 0).toString());
 
+      pushSpark(sparkData.temp,  s.sensors?.temp_c);
+      pushSpark(sparkData.hum,   s.sensors?.hum_rh);
+      pushSpark(sparkData.s1,    s.sensors?.soil1);
+      pushSpark(sparkData.s2,    s.sensors?.soil2);
+
+      drawSpark("#spark-temp", sparkData.temp, accent);
+      drawSpark("#spark-hum",  sparkData.hum,  muted);
+      drawSpark("#spark-s1",   sparkData.s1,   accent);
+      drawSpark("#spark-s2",   sparkData.s2,   muted);
+
       for (const id of ["light1","light2","fan","pump"]){
         const r = s.relays?.[id];
         if (!r) continue;
@@ -106,24 +163,33 @@
 
     // Wire controls
     ["light1","light2","fan","pump"].forEach(id => {
-      const sw = $(`#sw-${id}`);
-      if (sw){
-        sw.addEventListener("change", async () => {
+      const segAuto = $(`#seg-${id}-auto`);
+      const segMan  = $(`#seg-${id}-man`);
+      const tog     = $(`#tog-${id}`);
+
+      if (segAuto){
+        segAuto.addEventListener("click", async () => {
+          try{
+            await apiGet(`/api/mode?id=${encodeURIComponent(id)}&auto=1`);
+            await refresh();
+          }catch(e){ toast(`Mode change failed: ${e.message}`); }
+        });
+      }
+      if (segMan){
+        segMan.addEventListener("click", async () => {
+          try{
+            await apiGet(`/api/mode?id=${encodeURIComponent(id)}&auto=0`);
+            await refresh();
+          }catch(e){ toast(`Mode change failed: ${e.message}`); }
+        });
+      }
+      if (tog){
+        tog.addEventListener("click", async () => {
+          if (tog.disabled) return;
           try{
             await apiGet(`/api/toggle?id=${encodeURIComponent(id)}`);
             await refresh();
           }catch(e){ toast(`Toggle failed: ${e.message}`); }
-        });
-      }
-      const btn = $(`#btn-${id}`);
-      if (btn){
-        btn.addEventListener("click", async () => {
-          try{
-            const mode = $(`#m-${id}`)?.textContent === "AUTO";
-            const next = mode ? 0 : 1;
-            await apiGet(`/api/mode?id=${encodeURIComponent(id)}&auto=${next}`);
-            await refresh();
-          }catch(e){ toast(`Mode change failed: ${e.message}`); }
         });
       }
     });
@@ -135,9 +201,6 @@
       const c1 = $("#tempHumChart");
       const c2 = $("#lightChart");
       if (!c1 || !c2 || !window.Chart) return;
-
-      const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#12a150";
-      const muted  = getComputedStyle(document.documentElement).getPropertyValue("--muted").trim()  || "#6b7c85";
 
       const d = await apiGet(`/api/history?ts=${Date.now()}`);
       const pts = d.points || [];

@@ -3,6 +3,7 @@
 
 #include <WebServer.h>
 #include <LittleFS.h>
+#include <ctype.h>
 #include <WiFi.h>
 #include <DNSServer.h>
 
@@ -50,6 +51,24 @@ static String htmlEscape(const String& in) {
       case '"': s += "&quot;"; break;
       case '\'': s += "&#39;"; break;
       default: s += c; break;
+    }
+  }
+  return s;
+}
+
+static String urlencode(const String& in) {
+  String s; s.reserve(in.length() * 2);
+  const char* hex = "0123456789ABCDEF";
+  for (size_t i = 0; i < in.length(); i++) {
+    char c = in[i];
+    if (isalnum((unsigned char)c) || c == '-' || c == '_' || c == '.' || c == '~') {
+      s += c;
+    } else if (c == ' ') {
+      s += '+';
+    } else {
+      s += '%';
+      s += hex[(c >> 4) & 0xF];
+      s += hex[c & 0xF];
     }
   }
   return s;
@@ -226,6 +245,7 @@ static void handleStatusApi() {
   json += "{";
   json += "\"time\":\"" + jsonEscape(timeStr) + "\",";
   json += "\"time_synced\":"; json += (timeAvail ? "true" : "false"); json += ",";
+  json += "\"timezone\":\"" + jsonEscape(greenhouseTimezoneLabel()) + "\",";
 
   json += "\"wifi\":{";
   json += "\"connected\":"; json += (connected ? "true" : "false"); json += ",";
@@ -464,19 +484,19 @@ static void handleRoot() {
   page += "<div class='grid grid-tiles'>";
   page += "<div class='tile'><div class='tile-label'>Temperature</div>"
           "<div class='tile-value'><span id='v-temp'>—</span><span class='tile-unit'>°C</span></div>"
-          "<div class='tile-label'>Air</div></div>";
+          "<div class='tile-label'>Air</div><canvas class='sparkline' id='spark-temp' height='38'></canvas></div>";
 
   page += "<div class='tile'><div class='tile-label'>Humidity</div>"
           "<div class='tile-value'><span id='v-hum'>—</span><span class='tile-unit'>%</span></div>"
-          "<div class='tile-label'>Air</div></div>";
+          "<div class='tile-label'>Air</div><canvas class='sparkline' id='spark-hum' height='38'></canvas></div>";
 
   page += "<div class='tile'><div class='tile-label'>Soil 1</div>"
           "<div class='tile-value'><span id='v-s1'>—</span><span class='tile-unit'>%</span></div>"
-          "<div class='tile-label'>Moisture</div></div>";
+          "<div class='tile-label'>Moisture</div><canvas class='sparkline' id='spark-s1' height='38'></canvas></div>";
 
   page += "<div class='tile'><div class='tile-label'>Soil 2</div>"
           "<div class='tile-value'><span id='v-s2'>—</span><span class='tile-unit'>%</span></div>"
-          "<div class='tile-label'>Moisture</div></div>";
+          "<div class='tile-label'>Moisture</div><canvas class='sparkline' id='spark-s2' height='38'></canvas></div>";
   page += "</div>";
 
   page += "<div class='card' style='margin-top:14px'>";
@@ -500,14 +520,20 @@ static void handleRoot() {
     page += "</span>";
     page += "</div>";
 
-    page += "<div class='row'>";
-    page += "<label class='switch'><input type='checkbox' id='sw-"; page += id; page += "'";
-    if (isOn) page += " checked";
-    if (isAuto) page += " disabled";
-    page += "><span class='slider'></span></label>";
+    page += "<div class='row control-actions'>";
+    page += "<div class='segmented' role='group' aria-label='Mode'>";
+    page += "<button type='button' class='seg-btn";
+    if (isAuto) page += " active";
+    page += "' id='seg-"; page += id; page += "-auto' data-mode='auto'>AUTO</button>";
+    page += "<button type='button' class='seg-btn";
+    if (!isAuto) page += " active";
+    page += "' id='seg-"; page += id; page += "-man' data-mode='man'>MAN</button>";
+    page += "</div>";
 
-    page += "<button type='button' class='btn' id='btn-"; page += id; page += "'>";
-    page += isAuto ? "Switch to MANUAL" : "Switch to AUTO";
+    page += "<button type='button' class='btn' id='tog-"; page += id; page += "'";
+    if (isAuto) page += " disabled";
+    page += ">";
+    page += isOn ? "Turn OFF" : "Turn ON";
     page += "</button>";
 
     page += "<span class='meta' id='sched-"; page += id; page += "'>";
@@ -612,10 +638,16 @@ static void handleConfigGet() {
   page += "<div class='card'><h2>Configuration</h2>";
   page += "<div class='sub'>Settings are saved to NVS and applied immediately.</div>";
 
+  if (server.hasArg("appliedProfile")) {
+    page += "<div class='pill' style='margin-top:10px'>Applied profile: " + htmlEscape(server.arg("appliedProfile")) + "</div>";
+  }
+
   page += "<div class='tabs' data-tabs='config' data-persist='ezgrow_config_tab' style='margin-top:12px'>";
   page += "<button class='tab' type='button' data-tab='env'>Environment</button>";
   page += "<button class='tab' type='button' data-tab='lights'>Lights</button>";
   page += "<button class='tab' type='button' data-tab='auto'>Automation</button>";
+  page += "<button class='tab' type='button' data-tab='grow'>Grow profile</button>";
+  page += "<button class='tab' type='button' data-tab='system'>System</button>";
   page += "<button class='tab' type='button' data-tab='security'>Security</button>";
   page += "</div>";
 
@@ -682,6 +714,29 @@ static void handleConfigGet() {
   page += "</div>";
   page += "</div>";
 
+  // GROW PROFILE
+  page += "<div class='tab-panel' data-tab='grow'>";
+  page += "<div class='form-grid'>";
+  page += "<div class='field'><label>Preset</label><select name='growProfile'>";
+  page += "<option value='0' selected>Custom (no change)</option>";
+  page += "<option value='1'>Seedling</option>";
+  page += "<option value='2'>Vegetative</option>";
+  page += "<option value='3'>Flowering</option>";
+  page += "</select><div class='small'>Apply preset thresholds, schedules, and automation defaults.</div></div>";
+  page += "<div class='field'><label>&nbsp;</label><button class='btn primary' type='submit' name='applyProfile' value='1'>Apply preset</button><div class='small'>Values are saved immediately.</div></div>";
+  page += "</div>";
+  page += "</div>";
+
+  // SYSTEM
+  page += "<div class='tab-panel' data-tab='system'>";
+  page += "<div class='form-grid'>";
+  page += "<div class='field'><label>Timezone</label><select name='tzIndex'>";
+  page += "<option value='0'"; if (gConfig.tzIndex == 0) page += " selected"; page += ">EU (CET/CEST)</option>";
+  page += "<option value='1'"; if (gConfig.tzIndex == 1) page += " selected"; page += ">US (EST/EDT)</option>";
+  page += "</select><div class='small'>Applied immediately to NTP and time display.</div></div>";
+  page += "</div>";
+  page += "</div>";
+
   // SECURITY
   page += "<div class='tab-panel' data-tab='security'>";
   page += "<p class='small'>If username is empty, HTTP Basic Auth is disabled.</p>";
@@ -709,75 +764,92 @@ static void handleConfigGet() {
 static void handleConfigPost() {
   if (!requireAuth()) return;
 
-  // Env thresholds
-  if (server.hasArg("fanOn")) {
-    float v = server.arg("fanOn").toFloat();
-    if (v > 0 && v < 80) gConfig.env.fanOnTemp = v;
-  }
-  if (server.hasArg("fanOff")) {
-    float v = server.arg("fanOff").toFloat();
-    if (v > 0 && v < 80) gConfig.env.fanOffTemp = v;
-  }
-  if (gConfig.env.fanOffTemp >= gConfig.env.fanOnTemp) {
-    gConfig.env.fanOnTemp  = 28.0f;
-    gConfig.env.fanOffTemp = 26.0f;
+  bool appliedProfile = false;
+  String appliedName;
+  if (server.hasArg("applyProfile")) {
+    int pid = server.arg("growProfile").toInt();
+    if (applyGrowProfile(pid, appliedName)) {
+      appliedProfile = true;
+    }
   }
 
-  if (server.hasArg("fanHumOn")) {
-    int v = server.arg("fanHumOn").toInt();
-    gConfig.env.fanHumOn = constrain(v, 0, 100);
-  }
-  if (server.hasArg("fanHumOff")) {
-    int v = server.arg("fanHumOff").toInt();
-    gConfig.env.fanHumOff = constrain(v, 0, 100);
-  }
-  if (gConfig.env.fanHumOff >= gConfig.env.fanHumOn) {
-    gConfig.env.fanHumOn  = 80;
-    gConfig.env.fanHumOff = 70;
+  if (!appliedProfile) {
+    // Env thresholds
+    if (server.hasArg("fanOn")) {
+      float v = server.arg("fanOn").toFloat();
+      if (v > 0 && v < 80) gConfig.env.fanOnTemp = v;
+    }
+    if (server.hasArg("fanOff")) {
+      float v = server.arg("fanOff").toFloat();
+      if (v > 0 && v < 80) gConfig.env.fanOffTemp = v;
+    }
+    if (gConfig.env.fanOffTemp >= gConfig.env.fanOnTemp) {
+      gConfig.env.fanOnTemp  = 28.0f;
+      gConfig.env.fanOffTemp = 26.0f;
+    }
+
+    if (server.hasArg("fanHumOn")) {
+      int v = server.arg("fanHumOn").toInt();
+      gConfig.env.fanHumOn = constrain(v, 0, 100);
+    }
+    if (server.hasArg("fanHumOff")) {
+      int v = server.arg("fanHumOff").toInt();
+      gConfig.env.fanHumOff = constrain(v, 0, 100);
+    }
+    if (gConfig.env.fanHumOff >= gConfig.env.fanHumOn) {
+      gConfig.env.fanHumOn  = 80;
+      gConfig.env.fanHumOff = 70;
+    }
+
+    if (server.hasArg("soilDry")) {
+      int v = server.arg("soilDry").toInt();
+      gConfig.env.soilDryThreshold = constrain(v, 0, 100);
+    }
+    if (server.hasArg("soilWet")) {
+      int v = server.arg("soilWet").toInt();
+      gConfig.env.soilWetThreshold = constrain(v, 0, 100);
+    }
+    if (gConfig.env.soilWetThreshold <= gConfig.env.soilDryThreshold) {
+      gConfig.env.soilDryThreshold = 35;
+      gConfig.env.soilWetThreshold = 45;
+    }
+
+    if (server.hasArg("pumpOff")) {
+      unsigned long v = server.arg("pumpOff").toInt();
+      if (v >= 10 && v <= 36000) gConfig.env.pumpMinOffSec = v;
+    }
+    if (server.hasArg("pumpOn")) {
+      unsigned long v = server.arg("pumpOn").toInt();
+      if (v >= 5 && v <= 3600) gConfig.env.pumpMaxOnSec = v;
+    }
+
+    // Light schedules
+    gConfig.light1.enabled = server.hasArg("l1Auto");
+    gConfig.light2.enabled = server.hasArg("l2Auto");
+
+    if (server.hasArg("l1On"))  gConfig.light1.onMinutes  = parseTimeToMinutes(server.arg("l1On"),  gConfig.light1.onMinutes);
+    if (server.hasArg("l1Off")) gConfig.light1.offMinutes = parseTimeToMinutes(server.arg("l1Off"), gConfig.light1.offMinutes);
+    if (server.hasArg("l2On"))  gConfig.light2.onMinutes  = parseTimeToMinutes(server.arg("l2On"),  gConfig.light2.onMinutes);
+    if (server.hasArg("l2Off")) gConfig.light2.offMinutes = parseTimeToMinutes(server.arg("l2Off"), gConfig.light2.offMinutes);
+
+    if (gConfig.light1.onMinutes == gConfig.light1.offMinutes) {
+      gConfig.light1.onMinutes  = 8 * 60;
+      gConfig.light1.offMinutes = 20 * 60;
+    }
+    if (gConfig.light2.onMinutes == gConfig.light2.offMinutes) {
+      gConfig.light2.onMinutes  = 8 * 60;
+      gConfig.light2.offMinutes = 20 * 60;
+    }
+
+    gConfig.autoFan  = server.hasArg("autoFan");
+    gConfig.autoPump = server.hasArg("autoPump");
   }
 
-  if (server.hasArg("soilDry")) {
-    int v = server.arg("soilDry").toInt();
-    gConfig.env.soilDryThreshold = constrain(v, 0, 100);
+  if (server.hasArg("tzIndex")) {
+    int tz = server.arg("tzIndex").toInt();
+    if (tz >= 0) gConfig.tzIndex = tz;
+    if (gConfig.tzIndex > 1) gConfig.tzIndex = 1;
   }
-  if (server.hasArg("soilWet")) {
-    int v = server.arg("soilWet").toInt();
-    gConfig.env.soilWetThreshold = constrain(v, 0, 100);
-  }
-  if (gConfig.env.soilWetThreshold <= gConfig.env.soilDryThreshold) {
-    gConfig.env.soilDryThreshold = 35;
-    gConfig.env.soilWetThreshold = 45;
-  }
-
-  if (server.hasArg("pumpOff")) {
-    unsigned long v = server.arg("pumpOff").toInt();
-    if (v >= 10 && v <= 36000) gConfig.env.pumpMinOffSec = v;
-  }
-  if (server.hasArg("pumpOn")) {
-    unsigned long v = server.arg("pumpOn").toInt();
-    if (v >= 5 && v <= 3600) gConfig.env.pumpMaxOnSec = v;
-  }
-
-  // Light schedules
-  gConfig.light1.enabled = server.hasArg("l1Auto");
-  gConfig.light2.enabled = server.hasArg("l2Auto");
-
-  if (server.hasArg("l1On"))  gConfig.light1.onMinutes  = parseTimeToMinutes(server.arg("l1On"),  gConfig.light1.onMinutes);
-  if (server.hasArg("l1Off")) gConfig.light1.offMinutes = parseTimeToMinutes(server.arg("l1Off"), gConfig.light1.offMinutes);
-  if (server.hasArg("l2On"))  gConfig.light2.onMinutes  = parseTimeToMinutes(server.arg("l2On"),  gConfig.light2.onMinutes);
-  if (server.hasArg("l2Off")) gConfig.light2.offMinutes = parseTimeToMinutes(server.arg("l2Off"), gConfig.light2.offMinutes);
-
-  if (gConfig.light1.onMinutes == gConfig.light1.offMinutes) {
-    gConfig.light1.onMinutes  = 8 * 60;
-    gConfig.light1.offMinutes = 20 * 60;
-  }
-  if (gConfig.light2.onMinutes == gConfig.light2.offMinutes) {
-    gConfig.light2.onMinutes  = 8 * 60;
-    gConfig.light2.offMinutes = 20 * 60;
-  }
-
-  gConfig.autoFan  = server.hasArg("autoFan");
-  gConfig.autoPump = server.hasArg("autoPump");
 
   // Web UI auth: update credentials in memory and NVS
   String newUser = sWebAuthUser;
@@ -807,7 +879,14 @@ static void handleConfigPost() {
   saveConfig();
   saveWebAuthConfig(sWebAuthUser, sWebAuthPass);
 
-  server.sendHeader("Location", "/config", true);
+  applyTimezoneFromConfig();
+
+  String redirectUrl = "/config";
+  if (appliedProfile && appliedName.length()) {
+    redirectUrl += "?appliedProfile=" + urlencode(appliedName);
+  }
+
+  server.sendHeader("Location", redirectUrl, true);
   server.send(302, "text/plain", "");
 }
 

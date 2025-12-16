@@ -62,7 +62,7 @@
     if (arr.length > 60) arr.shift();
   }
 
-  function drawSpark(id, data, color){
+  function drawSpark(id, data, color, opts={}){
     const canvas = $(id);
     if (!canvas || !data.length) return;
     const ctx = canvas.getContext("2d");
@@ -75,16 +75,18 @@
     ctx.scale(dpr, dpr);
     ctx.clearRect(0, 0, w, h);
 
-    const min = Math.min(...data);
-    const max = Math.max(...data);
+    const min = Number.isFinite(opts.min) ? opts.min : Math.min(...data);
+    const max = Number.isFinite(opts.max) ? opts.max : Math.max(...data);
+    const clamp = v => Math.min(max, Math.max(min, v));
     const range = Math.max(1e-3, max - min);
 
     ctx.strokeStyle = color;
     ctx.lineWidth = 2;
     ctx.beginPath();
     data.forEach((v, idx) => {
+      const cv = clamp(v);
       const x = (idx / Math.max(1, data.length - 1)) * (w - 6) + 3;
-      const y = h - ((v - min) / range) * (h - 6) - 3;
+      const y = h - ((cv - min) / range) * (h - 6) - 3;
       if (idx === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
     });
     ctx.stroke();
@@ -150,10 +152,10 @@
       pushSpark(sparkData.s1,    s.sensors?.soil1);
       pushSpark(sparkData.s2,    s.sensors?.soil2);
 
-      drawSpark("#spark-temp", sparkData.temp, accent);
-      drawSpark("#spark-hum",  sparkData.hum,  muted);
-      drawSpark("#spark-s1",   sparkData.s1,   accent);
-      drawSpark("#spark-s2",   sparkData.s2,   muted);
+      drawSpark("#spark-temp", sparkData.temp, accent, { min: 0,  max: 50 });
+      drawSpark("#spark-hum",  sparkData.hum,  muted,  { min: 0,  max: 100 });
+      drawSpark("#spark-s1",   sparkData.s1,   accent, { min: 0,  max: 100 });
+      drawSpark("#spark-s2",   sparkData.s2,   muted,  { min: 0,  max: 100 });
 
       for (const id of ["light1","light2","fan","pump"]){
         const r = s.relays?.[id];

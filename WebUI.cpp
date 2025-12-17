@@ -183,7 +183,7 @@ static void handleHistoryApi() {
   if (!requireAuth()) return;
 
   String json;
-  json.reserve(20000);
+  json.reserve(24000);
   json += "{ \"points\":[";
 
   size_t count = gHistoryFull ? HISTORY_SIZE : gHistoryIndex;
@@ -208,6 +208,11 @@ static void handleHistoryApi() {
     json += ",\"hum\":";
     if (isnan(s.hum)) json += "null";
     else json += String(s.hum, 0);
+
+    json += ",\"soil1\":";
+    json += String(s.soil1);
+    json += ",\"soil2\":";
+    json += String(s.soil2);
 
     json += ",\"l1\":";
     json += s.light1 ? "1" : "0";
@@ -714,8 +719,9 @@ static void handleRoot() {
 
   page += "<div class='card' style='margin-top:14px'>";
   page += "<h2>History (last 24 h)</h2>";
-  page += "<div class='sub'>Temperature/humidity + light states (logged every minute).</div>";
+  page += "<div class='sub'>Temperature/humidity, soil moisture, and light states (logged every minute).</div>";
   page += "<div style='margin-top:12px'><canvas id='tempHumChart' height='150'></canvas></div>";
+  page += "<div style='margin-top:14px'><canvas id='soilChart' height='120'></canvas></div>";
   page += "<div style='margin-top:14px'><canvas id='lightChart' height='120'></canvas></div>";
   page += "</div>";
 

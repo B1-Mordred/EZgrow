@@ -77,6 +77,8 @@ struct HistorySample {
   time_t timestamp; // unix time (seconds), 0 if unknown
   float  temp;
   float  hum;
+  int    soil1;
+  int    soil2;
   bool   light1;
   bool   light2;
 };

@@ -814,6 +814,8 @@ void logHistorySample() {
 
   s.temp   = gSensors.temperatureC;
   s.hum    = gSensors.humidityRH;
+  s.soil1  = gSensors.soil1Percent;
+  s.soil2  = gSensors.soil2Percent;
   s.light1 = gRelays.light1;
   s.light2 = gRelays.light2;
 

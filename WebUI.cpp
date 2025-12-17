@@ -294,7 +294,7 @@ static void handleStatusApi() {
   chamberJson(1, gConfig.chamber2, gSensors.soil2Percent, "light2");
   json += "],";
 
-  auto sched = [](const LightConfig& lc)->String {
+  auto sched = [](const LightSchedule& lc)->String {
     return minutesToTimeStrSafe(lc.onMinutes) + "–" + minutesToTimeStrSafe(lc.offMinutes);
   };
 

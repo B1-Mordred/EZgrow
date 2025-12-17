@@ -258,6 +258,40 @@
     return "";
   }
 
+  function prepareHistoryDatasets(points, timezone, chamberLabels=[]){
+    const pts = Array.isArray(points) ? points : [];
+    const labelNames = Array.isArray(chamberLabels) && chamberLabels.length >= 2
+      ? chamberLabels
+      : ["Chamber 1", "Chamber 2"];
+
+    const safeVal = v => (v == null || Number.isNaN(v)) ? null : v;
+    const soilVal = (p, keyShort, keyLong) => {
+      const raw = (keyLong in p) ? p[keyLong] : p[keyShort];
+      return Number.isFinite(raw) ? raw : null;
+    };
+
+    const labels = pts.map((p, idx) => {
+      if (p && Number.isFinite(p.t) && p.t > 0){
+        const dt = new Date(p.t * 1000);
+        return formatTimeLabel(dt, timezone);
+      }
+      return String(idx);
+    });
+
+    const lightVal = v => (v ? 1 : 0);
+
+    return {
+      labels,
+      temps: pts.map(p => safeVal(p?.temp)),
+      hums:  pts.map(p => safeVal(p?.hum)),
+      light1: pts.map(p => lightVal(p?.l1)),
+      light2: pts.map(p => lightVal(p?.l2)),
+      soil1: pts.map(p => soilVal(p || {}, "s1", "soil1")),
+      soil2: pts.map(p => soilVal(p || {}, "s2", "soil2")),
+      chamberLabels: labelNames,
+    };
+  }
+
   function drawSpark(id, data, color, opts={}){
     const canvas = $(id);
     if (!canvas || !data.length) return;
@@ -452,24 +486,21 @@
       if (chartsInit) return;
       const c1 = $("#tempHumChart");
       const c2 = $("#lightChart");
+      const c3 = $("#soilChart");
       if (!c1 || !c2 || !window.Chart) return;
 
       const d = await apiGet(`/api/history?ts=${Date.now()}`);
       const pts = d.points || [];
       if (!pts.length) return;
 
-      const labels = pts.map((p, idx) => {
-        if (p.t && p.t > 0){
-          const dt = new Date(p.t * 1000);
-          return formatTimeLabel(dt, statusTimezone);
-        }
-        return String(idx);
-      });
-
-      const temps = pts.map(p => p.temp);
-      const hums  = pts.map(p => p.hum);
-      const l1    = pts.map(p => p.l1);
-      const l2    = pts.map(p => p.l2);
+      const history = prepareHistoryDatasets(pts, statusTimezone, chamberLabels);
+      const labels = history.labels;
+      const temps  = history.temps;
+      const hums   = history.hums;
+      const l1     = history.light1;
+      const l2     = history.light2;
+      const s1     = history.soil1;
+      const s2     = history.soil2;
 
       new Chart(c1.getContext("2d"), {
         type:"line",
@@ -486,6 +517,24 @@
           }
         }
       });
+
+      if (c3){
+        new Chart(c3.getContext("2d"), {
+          type:"line",
+          data:{ labels, datasets:[
+            { label:`${history.chamberLabels[0]} soil`, data:s1, borderColor:accent, backgroundColor:"rgba(18,161,80,0.10)", tension:0.2, spanGaps:true },
+            { label:`${history.chamberLabels[1]} soil`, data:s2, borderColor:muted,  backgroundColor:"rgba(107,124,133,0.10)", tension:0.2, spanGaps:true },
+          ]},
+          options:{
+            responsive:true,
+            interaction:{ mode:"index", intersect:false },
+            scales:{
+              y:{ min:0, max:100, title:{ display:true, text:"Soil moisture (%)" } },
+              x:{ ticks:{ maxTicksLimit:12 } }
+            }
+          }
+        });
+      }
 
       new Chart(c2.getContext("2d"), {
         type:"line",
@@ -636,6 +685,7 @@
       readProfileOption,
       renderChamberPreview,
       buildChamberConfirmMessage,
+      prepareHistoryDatasets,
     });
   }
 })();

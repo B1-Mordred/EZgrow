@@ -138,6 +138,16 @@
     return dt.toLocaleTimeString([], baseOpts);
   }
 
+  function resolveTimezone(status){
+    const tzIana = (status && typeof status.timezone_iana === "string") ? status.timezone_iana.trim() : "";
+    if (tzIana) return tzIana;
+
+    const label = (status && typeof status.timezone === "string") ? status.timezone.trim() : "";
+    if (label.includes("/")) return label;
+
+    return "";
+  }
+
   function drawSpark(id, data, color, opts={}){
     const canvas = $(id);
     if (!canvas || !data.length) return;
@@ -222,7 +232,7 @@
       lastOkTs = Date.now();
       consecutiveErrors = 0;
       setStaleState(false);
-      statusTimezone = s.timezone || "";
+      statusTimezone = resolveTimezone(s);
       chamberLabels = deriveChamberLabels(s.chambers);
 
       const tzLabel = s.timezone ? ` (${s.timezone})` : "";
@@ -480,6 +490,6 @@
   });
 
   if (typeof window !== "undefined"){
-    window.__app = Object.assign({}, window.__app, { withRelayGuard, formatTimeLabel, pushSpark, deriveChamberLabels });
+    window.__app = Object.assign({}, window.__app, { withRelayGuard, formatTimeLabel, pushSpark, deriveChamberLabels, resolveTimezone });
   }
 })();

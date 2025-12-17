@@ -10,6 +10,7 @@
 - Protected configuration and relay-changing routes with optional HTTP Basic Auth challenges.
 - Updated documentation to describe the new connection flow, setup AP, authentication, and credential reset paths.
 - Added grow profile presets (Seedling, Vegetative, Flowering) with a dedicated config tab and preset helper.
+- Added IANA timezone identifiers for all timezone options, exposing `timezone_iana` on `/api/status` and preferring them for dashboard time labels.
 - Expanded timezone selection to seven options (UTC, Europe/Berlin, Europe/London, and four U.S. zones) with a System tab and timezone reporting via `/api/status`.
 - History chart labels now attempt to use the device timezone reported by `/api/status`, with a safe fallback when unavailable.
 - Refreshed the dashboard controls with segmented AUTO/MAN toggles and live sparklines for all sensors.

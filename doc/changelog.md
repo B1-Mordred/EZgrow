@@ -19,3 +19,4 @@
 - Apply timezone configuration only when a new selection is provided, applying the change once after saving.
 - Standardized dashboard sparkline ranges with clamped values for temperature, humidity, and soil moisture to improve readability.
 - Documented configuration tabs (environment, lights, automation, grow profiles, system timezone, security) to match the current UI.
+- Pump automation now tracks which chambers were dry at start, watering them until their individual wet thresholds are reached (or max-on expires) while preserving minimum-off timing.

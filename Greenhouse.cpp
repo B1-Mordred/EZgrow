@@ -68,6 +68,7 @@ static unsigned long lastHistoryLogMs = 0;
 static bool          pumpRunning    = false;
 static unsigned long pumpStartMs    = 0;
 static unsigned long lastPumpStopMs = 0;
+static uint8_t       pumpActiveDryMask = 0;
 
 // Time state
 static struct tm gTimeInfo;
@@ -656,22 +657,33 @@ void updateControlLogic() {
 
   // Pump (auto by soil moisture + timing)
   if (gConfig.autoPump) {
-    bool tooDry    = (gSensors.soil1Percent < gConfig.chamber1.soilDryThreshold) ||
-                     (gSensors.soil2Percent < gConfig.chamber2.soilDryThreshold);
-    bool wetEnough = (gSensors.soil1Percent > gConfig.chamber1.soilWetThreshold) &&
-                     (gSensors.soil2Percent > gConfig.chamber2.soilWetThreshold);
+    bool chamber1Dry = gSensors.soil1Percent < gConfig.chamber1.soilDryThreshold;
+    bool chamber2Dry = gSensors.soil2Percent < gConfig.chamber2.soilDryThreshold;
+    bool chamber1Wet = gSensors.soil1Percent > gConfig.chamber1.soilWetThreshold;
+    bool chamber2Wet = gSensors.soil2Percent > gConfig.chamber2.soilWetThreshold;
 
     if (!pumpRunning) {
-      if (tooDry && (nowMs - lastPumpStopMs > gConfig.env.pumpMinOffSec * 1000UL)) {
-        pumpRunning = true;
-        pumpStartMs = nowMs;
-        gRelays.pump = true;
+      bool tooDry    = chamber1Dry || chamber2Dry;
+      bool minOffMet = (nowMs - lastPumpStopMs) > (gConfig.env.pumpMinOffSec * 1000UL);
+
+      if (tooDry && minOffMet) {
+        pumpRunning      = true;
+        pumpStartMs      = nowMs;
+        pumpActiveDryMask = 0;
+        if (chamber1Dry) pumpActiveDryMask |= 0x01;
+        if (chamber2Dry) pumpActiveDryMask |= 0x02;
+        gRelays.pump     = true;
       }
     } else {
-      if (wetEnough || (nowMs - pumpStartMs > gConfig.env.pumpMaxOnSec * 1000UL)) {
-        pumpRunning    = false;
-        gRelays.pump   = false;
-        lastPumpStopMs = nowMs;
+      bool chamber1Satisfied = !(pumpActiveDryMask & 0x01) || chamber1Wet;
+      bool chamber2Satisfied = !(pumpActiveDryMask & 0x02) || chamber2Wet;
+      bool maxOnElapsed      = (nowMs - pumpStartMs) > (gConfig.env.pumpMaxOnSec * 1000UL);
+
+      if ((chamber1Satisfied && chamber2Satisfied) || maxOnElapsed) {
+        pumpRunning       = false;
+        gRelays.pump      = false;
+        lastPumpStopMs    = nowMs;
+        pumpActiveDryMask = 0;
       }
     }
   }

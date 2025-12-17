@@ -183,6 +183,7 @@ The device supports:
     - Per-chamber configs (`ChamberConfig`): name, dry/wet thresholds, and optional profile IDs.
     - Minimum OFF time (`pumpMinOffSec`).
     - Maximum ON time (`pumpMaxOnSec`).
+  - When the pump starts, it records which chambers were below their dry thresholds and only requires those chambers to reach their wet thresholds before shutting off (or when `pumpMaxOnSec` elapses), respecting the minimum OFF interval between cycles.
 
 - **Lights**:
   - Each light can run:

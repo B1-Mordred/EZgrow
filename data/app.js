@@ -127,6 +127,90 @@
     });
   }
 
+  const datasetInt = (el, key) => {
+    if (!el || !el.dataset || !(key in el.dataset)) return null;
+    const v = Number.parseInt(el.dataset[key], 10);
+    return Number.isFinite(v) ? v : null;
+  };
+
+  const datasetBool = (el, key) => {
+    if (!el || !el.dataset || !(key in el.dataset)) return null;
+    const raw = String(el.dataset[key]).toLowerCase();
+    return raw === "1" || raw === "true" || raw === "yes";
+  };
+
+  const datasetStr = (el, key) => (el && el.dataset && (key in el.dataset)) ? String(el.dataset[key]) : "";
+
+  function readProfileOption(selectEl, chamberIdx){
+    if (!selectEl) return null;
+    const opt = selectEl.selectedOptions?.[0] || (selectEl.options ? selectEl.options[selectEl.selectedIndex] : null);
+    if (!opt) return null;
+
+    const lightKey = chamberIdx === 0 ? "l1" : "l2";
+    const soilKey  = chamberIdx === 0 ? "c1" : "c2";
+
+    return {
+      label: datasetStr(opt, "label") || opt.textContent || "Preset",
+      soilDry: datasetInt(opt, `${soilKey}Dry`),
+      soilWet: datasetInt(opt, `${soilKey}Wet`),
+      lightOn: datasetStr(opt, `${lightKey}On`),
+      lightOff: datasetStr(opt, `${lightKey}Off`),
+      lightAuto: datasetBool(opt, `${lightKey}Auto`),
+      autoFan: datasetBool(opt, "autoFan"),
+      autoPump: datasetBool(opt, "autoPump"),
+      setsAutoFan: datasetBool(opt, "setAutoFan"),
+      setsAutoPump: datasetBool(opt, "setAutoPump"),
+    };
+  }
+
+  function renderChamberPreview(selectEl, previewEl, chamberIdx){
+    if (!previewEl) return;
+    const chamberName = previewEl.dataset.chamberName || `Chamber ${chamberIdx + 1}`;
+    const lightLabel  = previewEl.dataset.lightLabel || `Light ${chamberIdx + 1}`;
+    const data = readProfileOption(selectEl, chamberIdx);
+
+    const soilEl  = $(".pv-soil", previewEl);
+    const lightEl = $(".pv-light", previewEl);
+    const modeEl  = $(".pv-mode", previewEl);
+
+    if (!data){
+      if (soilEl) soilEl.textContent = "Select a preset";
+      if (lightEl) lightEl.textContent = `${lightLabel}: —`;
+      if (modeEl) modeEl.textContent = "Light mode: —";
+      return;
+    }
+
+    const soilText = Number.isFinite(data.soilDry) && Number.isFinite(data.soilWet)
+      ? `${data.soilDry}% dry / ${data.soilWet}% wet`
+      : "Select a preset";
+
+    const on  = data.lightOn || "—";
+    const off = data.lightOff || "—";
+    const mode = data.lightAuto === null ? "—" : (data.lightAuto ? "AUTO" : "MAN");
+
+    if (soilEl) soilEl.textContent = soilText;
+    if (lightEl) lightEl.textContent = `${lightLabel}: ${on} – ${off}`;
+    if (modeEl) modeEl.textContent = `${lightLabel} mode: ${mode}`;
+
+    previewEl.dataset.previewLabel = chamberName;
+  }
+
+  function buildChamberConfirmMessage(profile, chamberName, lightLabel){
+    const chamber = chamberName || "this chamber";
+    if (!profile){
+      return `Apply preset to ${chamber}?`;
+    }
+
+    const soil = Number.isFinite(profile.soilDry) && Number.isFinite(profile.soilWet)
+      ? `${profile.soilDry}% dry / ${profile.soilWet}% wet`
+      : "—";
+    const on  = profile.lightOn || "—";
+    const off = profile.lightOff || "—";
+    const mode = profile.lightAuto === null ? "—" : (profile.lightAuto ? "AUTO" : "MAN");
+
+    return `Apply "${profile.label}" to ${chamber}?\n\nSoil: ${soil}\n${lightLabel || "Light"}: ${on} – ${off} (${mode})`;
+  }
+
   const sparkData = {
     temp: [],
     hum: [],
@@ -454,11 +538,36 @@
       console.warn("Config status fetch failed", e);
     }
 
+    const renderPreview = idx => {
+      const select = $(`#prof-ch${idx + 1}`);
+      const preview = document.querySelector(`[data-preview='ch${idx + 1}']`);
+      renderChamberPreview(select, preview, idx);
+    };
+
+    renderPreview(0);
+    renderPreview(1);
+
+    [0, 1].forEach(idx => {
+      const select = $(`#prof-ch${idx + 1}`);
+      if (select){
+        select.addEventListener("change", () => renderPreview(idx));
+      }
+    });
+
     $$(".apply-profile").forEach(btn => {
       btn.addEventListener("click", async () => {
         const { chamberIdx, chamberId, requestValue } = resolveChamberDataset(btn.dataset || {});
         const select = $(`#prof-ch${chamberIdx + 1}`);
         const profileId = select ? Number(select.value) : 0;
+        const preview = document.querySelector(`[data-preview='ch${chamberId}']`);
+        const chamberName = btn.dataset.chamberName || preview?.dataset.chamberName || `Chamber ${chamberId}`;
+        const lightLabel = btn.dataset.lightLabel || preview?.dataset.lightLabel || `Light ${chamberId}`;
+        const profileData = readProfileOption(select, chamberIdx);
+        const confirmMsg = buildChamberConfirmMessage(profileData, chamberName, lightLabel);
+
+        if (!window.confirm(confirmMsg)){
+          return;
+        }
 
         btn.disabled = true;
         btn.setAttribute("aria-busy", "true");
@@ -477,6 +586,7 @@
         }finally{
           btn.disabled = false;
           btn.removeAttribute("aria-busy");
+          renderPreview(chamberIdx);
         }
       });
     });
@@ -517,6 +627,15 @@
   });
 
   if (typeof window !== "undefined"){
-    window.__app = Object.assign({}, window.__app, { withRelayGuard, formatTimeLabel, pushSpark, deriveChamberLabels, resolveTimezone });
+    window.__app = Object.assign({}, window.__app, {
+      withRelayGuard,
+      formatTimeLabel,
+      pushSpark,
+      deriveChamberLabels,
+      resolveTimezone,
+      readProfileOption,
+      renderChamberPreview,
+      buildChamberConfirmMessage,
+    });
   }
 })();

@@ -11,11 +11,13 @@ function setupDom(html = "<!doctype html><body data-page=''></body>", fetchImpl)
   window.clearInterval = () => {};
   window.getComputedStyle = () => ({ getPropertyValue: () => "" });
   window.fetch = fetchImpl || (async () => ({ ok:true, json: async () => ({}) }));
+  window.confirm = () => true;
 
   globalThis.window = window;
   globalThis.document = window.document;
   globalThis.requestAnimationFrame = window.requestAnimationFrame;
   globalThis.fetch = window.fetch;
+  globalThis.confirm = window.confirm;
   globalThis.getComputedStyle = window.getComputedStyle;
   globalThis.setInterval = window.setInterval;
   globalThis.clearInterval = window.clearInterval;

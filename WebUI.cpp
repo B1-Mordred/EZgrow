@@ -891,12 +891,41 @@ static void handleConfigGet() {
   page += "<div class='form-grid'>";
 
   auto profileOptions = [](int selectedId) -> String {
+    auto profileDataAttrs = [](const GrowProfileInfo* info) -> String {
+      if (!info) return String("");
+
+      String attrs;
+      attrs.reserve(180);
+
+      attrs += " data-label='" + htmlEscape(info->label) + "'";
+
+      attrs += " data-c1-dry='" + String(info->chamber1.soilDryThreshold) + "'";
+      attrs += " data-c1-wet='" + String(info->chamber1.soilWetThreshold) + "'";
+      attrs += " data-c2-dry='" + String(info->chamber2.soilDryThreshold) + "'";
+      attrs += " data-c2-wet='" + String(info->chamber2.soilWetThreshold) + "'";
+
+      attrs += " data-l1-on='" + minutesToTimeStrSafe(info->light1.onMinutes) + "'";
+      attrs += " data-l1-off='" + minutesToTimeStrSafe(info->light1.offMinutes) + "'";
+      attrs += " data-l1-auto='" + String(info->light1.enabled ? 1 : 0) + "'";
+      attrs += " data-l2-on='" + minutesToTimeStrSafe(info->light2.onMinutes) + "'";
+      attrs += " data-l2-off='" + minutesToTimeStrSafe(info->light2.offMinutes) + "'";
+      attrs += " data-l2-auto='" + String(info->light2.enabled ? 1 : 0) + "'";
+
+      attrs += " data-auto-fan='" + String(info->autoFan ? 1 : 0) + "'";
+      attrs += " data-auto-pump='" + String(info->autoPump ? 1 : 0) + "'";
+      attrs += " data-set-auto-fan='" + String(info->setsAutoFan ? 1 : 0) + "'";
+      attrs += " data-set-auto-pump='" + String(info->setsAutoPump ? 1 : 0) + "'";
+
+      return attrs;
+    };
+
     String opts;
     opts.reserve(160);
     for (size_t i = 0; i < growProfileCount(); i++) {
       const GrowProfileInfo* info = growProfileInfoAt(i);
       if (!info) continue;
       opts += "<option value='" + String(i) + "'";
+      opts += profileDataAttrs(info);
       if ((int)i == selectedId) opts += " selected";
       opts += ">" + htmlEscape(info->label) + "</option>";
     }
@@ -906,16 +935,24 @@ static void handleConfigGet() {
   auto chamberProfileRow = [&](int idx, const ChamberConfig& cfg, int selectedId) {
     const char* fallback = (idx == 0) ? DEFAULT_CHAMBER1_NAME : DEFAULT_CHAMBER2_NAME;
     const String chamberName = cfg.name.length() ? cfg.name : String(fallback);
-    page += "<div class='field chamber-profile' data-chamber='" + String(idx) + "' data-chamber-id='" + String(idx + 1) + "'>";
+    page += "<div class='field chamber-profile' data-chamber='" + String(idx) + "' data-chamber-id='" + String(idx + 1) + "' data-chamber-name='" + htmlEscape(chamberName) + "' data-light-label='Light " + String(idx + 1) + "'>";
     page += "<label>Preset for " + htmlEscape(chamberName) + "</label>";
     page += "<div class='row' style='gap:8px;flex-wrap:wrap'>";
     page += "<select id='prof-ch" + String(idx + 1) + "' name='growProfileCh" + String(idx + 1) + "'>";
     page += profileOptions(selectedId);
     page += "</select>";
-    page += "<button class='btn primary apply-profile' type='button' data-chamber='" + String(idx) + "' data-chamber-id='" + String(idx + 1) + "'>";
+    page += "<button class='btn primary apply-profile' type='button' data-chamber='" + String(idx) + "' data-chamber-id='" + String(idx + 1) + "' data-chamber-name='" + htmlEscape(chamberName) + "' data-light-label='Light " + String(idx + 1) + "'>";
     page += "Apply to " + htmlEscape(chamberName);
     page += "</button></div>";
-    page += "<div class='small'>Updates only this chamber's soil thresholds and linked light schedule/auto flag.</div></div>";
+    page += "<div class='small'>Updates only this chamber's soil thresholds and linked light schedule/auto flag.</div>";
+    page += "<div class='profile-preview' data-preview='ch" + String(idx + 1) + "' data-chamber-name='" + htmlEscape(chamberName) + "' data-light-label='Light " + String(idx + 1) + "'>";
+    page += "<div class='preview-head'><div class='preview-title'>Preview for " + htmlEscape(chamberName) + "</div>";
+    page += "<div class='small'>Shows the preset values before applying.</div></div>";
+    page += "<table class='table preview-table'><tr><th>Soil</th><td class='pv-soil'>Select a preset</td></tr>";
+    page += "<tr><th>Light schedule</th><td class='pv-light'>—</td></tr>";
+    page += "<tr><th>Light mode</th><td class='pv-mode'>—</td></tr></table>";
+    page += "</div>";
+    page += "</div>";
   };
 
   int chamber1Selected = (gConfig.chamber1.profileId > 0) ? gConfig.chamber1.profileId : 0;

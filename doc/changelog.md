@@ -10,6 +10,7 @@
 - Persist Wi-Fi and basic-auth credentials in Preferences and expose them on `/config`, including reset links.
 - Protected configuration and relay-changing routes with optional HTTP Basic Auth challenges.
 - Updated documentation to describe the new connection flow, setup AP, authentication, and credential reset paths.
+- Added per-chamber preset previews and confirmation prompts, embedding preset metadata on grow profile selectors for clearer apply actions.
 - Added grow profile presets (Seedling, Vegetative, Flowering) with a dedicated config tab and preset helper.
 - Added IANA timezone identifiers for all timezone options, exposing `timezone_iana` on `/api/status` and preferring them for dashboard time labels.
 - Expanded timezone selection to seven options (UTC, Europe/Berlin, Europe/London, and four U.S. zones) with a System tab and timezone reporting via `/api/status`.

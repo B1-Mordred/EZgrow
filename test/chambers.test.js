@@ -70,3 +70,42 @@ test('dashboard refresh populates chamber labels with fallbacks', async () => {
   assert.equal(document.querySelector('#ctl-light1-name').textContent, "Leafy Greens");
   assert.equal(document.querySelector('#ctl-light2-name').textContent, "Chamber 2");
 });
+
+test('config grow profile buttons call chamber endpoint and update banner', async () => {
+  const calls = [];
+  const fetchMock = async url => {
+    const urlStr = (typeof url === 'string') ? url : (url && url.url ? url.url : String(url));
+    calls.push(urlStr);
+    if (urlStr.startsWith('/api/status')) {
+      return { ok:true, json: async () => ({ time:"12:00:00", time_synced:true, timezone:"UTC" }) };
+    }
+    if (urlStr.startsWith('/api/grow/apply')) {
+      return { ok:true, json: async () => ({
+        ok:true,
+        applied_profile:"Vegetative",
+        chamber_name:"Herbs",
+        chamber_idx:0,
+        label:"Vegetative -> Herbs"
+      }) };
+    }
+    return { ok:true, json: async () => ({}) };
+  };
+
+  const dom = setupDom(
+    "<!doctype html><body data-page='config'>" +
+    "<div id='cfg-time'></div>" +
+    "<div id='appliedProfileBanner' data-label=''></div>" +
+    "<select id='prof-ch1'><option value='0'>Custom</option><option value='2' selected>Vegetative</option></select>" +
+    "<button class='apply-profile' data-chamber='0' type='button'>Apply</button>" +
+    "</body>",
+    fetchMock
+  );
+
+  const { document } = dom.window;
+  await new Promise(res => setTimeout(res, 5));
+  document.querySelector('.apply-profile').click();
+  await new Promise(res => setTimeout(res, 15));
+
+  assert.ok(calls.some(u => u.includes('/api/grow/apply?chamber=0&profile=2')));
+  assert.equal(document.querySelector('#appliedProfileBanner').textContent, "Applied profile: Vegetative -> Herbs");
+});

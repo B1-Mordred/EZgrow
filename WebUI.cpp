@@ -320,6 +320,38 @@ static void handleStatusApi() {
   server.send(200, "application/json", json);
 }
 
+static void handleApplyProfileChamberApi() {
+  if (!requireAuth()) return;
+  if (!server.hasArg("chamber") || !server.hasArg("profile")) {
+    server.send(400, "application/json", "{\"ok\":false,\"error\":\"missing_args\"}");
+    return;
+  }
+
+  int chamberIdx = server.arg("chamber").toInt();
+  int profileId = server.arg("profile").toInt();
+  String appliedName;
+  if (!applyGrowProfileToChamber(chamberIdx, profileId, appliedName)) {
+    server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid\"}");
+    return;
+  }
+
+  saveConfig();
+
+  ChamberConfig &cfg = (chamberIdx == 0) ? gConfig.chamber1 : gConfig.chamber2;
+  const char* fallback = (chamberIdx == 0) ? DEFAULT_CHAMBER1_NAME : DEFAULT_CHAMBER2_NAME;
+  const String chamberName = cfg.name.length() ? cfg.name : String(fallback);
+  String label = appliedName + " -> " + chamberName;
+
+  String json = "{";
+  json += "\"ok\":true,";
+  json += "\"applied_profile\":\"" + jsonEscape(appliedName) + "\",";
+  json += "\"chamber_idx\":" + String(chamberIdx) + ",";
+  json += "\"chamber_name\":\"" + jsonEscape(chamberName) + "\",";
+  json += "\"label\":\"" + jsonEscape(label) + "\"";
+  json += "}";
+  server.send(200, "application/json", json);
+}
+
 // ================= Static assets from LittleFS =================
 
 static void handleChartJs() {
@@ -709,9 +741,14 @@ static void handleConfigGet() {
   page += "<div class='card'><h2>Configuration</h2>";
   page += "<div class='sub'>Settings are saved to NVS and applied immediately.</div>";
 
-  if (server.hasArg("appliedProfile")) {
-    page += "<div class='pill' style='margin-top:10px'>Applied profile: " + htmlEscape(server.arg("appliedProfile")) + "</div>";
+  String appliedBanner = server.hasArg("appliedProfile") ? server.arg("appliedProfile") : "";
+  page += "<div id='appliedProfileBanner' class='pill' data-label='" + htmlEscape(appliedBanner) + "' style='margin-top:10px";
+  if (!appliedBanner.length()) page += ";display:none";
+  page += "'>";
+  if (appliedBanner.length()) {
+    page += "Applied profile: " + htmlEscape(appliedBanner);
   }
+  page += "</div>";
 
   page += "<div class='tabs' data-tabs='config' data-persist='ezgrow_config_tab' style='margin-top:12px'>";
   page += "<button class='tab' type='button' data-tab='env'>Environment</button>";
@@ -738,17 +775,17 @@ static void handleConfigGet() {
   page += "<div class='field'><label>Fan OFF humidity (%RH)</label>"
           "<input type='number' step='1' name='fanHumOff' value='" + String(gConfig.env.fanHumOff) + "'></div>";
   page += "<div class='field'><label>Chamber 1 name</label>"
-          "<input type='text' maxlength='24' name='c1Name' value='" + htmlEscape(gConfig.chamber1.name) + "'></div>";
+          "<input type='text' maxlength='24' name='c1Name' value='" + htmlEscape(gConfig.chamber1.name) + "'><div class='small'>1–24 characters, HTML is stripped automatically.</div></div>";
   page += "<div class='field'><label>Chamber 2 name</label>"
-          "<input type='text' maxlength='24' name='c2Name' value='" + htmlEscape(gConfig.chamber2.name) + "'></div>";
+          "<input type='text' maxlength='24' name='c2Name' value='" + htmlEscape(gConfig.chamber2.name) + "'><div class='small'>1–24 characters, HTML is stripped automatically.</div></div>";
   page += "<div class='field'><label>Chamber 1 DRY threshold (%)</label>"
-          "<input type='number' step='1' name='c1Dry' value='" + String(gConfig.chamber1.soilDryThreshold) + "'></div>";
+          "<input type='number' step='1' name='c1SoilDry' value='" + String(gConfig.chamber1.soilDryThreshold) + "'><div class='small'>Uses soil sensor 1; pump is shared across chambers.</div></div>";
   page += "<div class='field'><label>Chamber 1 WET threshold (%)</label>"
-          "<input type='number' step='1' name='c1Wet' value='" + String(gConfig.chamber1.soilWetThreshold) + "'></div>";
+          "<input type='number' step='1' name='c1SoilWet' value='" + String(gConfig.chamber1.soilWetThreshold) + "'><div class='small'>Keep wet > dry for stable pump automation.</div></div>";
   page += "<div class='field'><label>Chamber 2 DRY threshold (%)</label>"
-          "<input type='number' step='1' name='c2Dry' value='" + String(gConfig.chamber2.soilDryThreshold) + "'></div>";
+          "<input type='number' step='1' name='c2SoilDry' value='" + String(gConfig.chamber2.soilDryThreshold) + "'><div class='small'>Uses soil sensor 2; shared pump serves both chambers.</div></div>";
   page += "<div class='field'><label>Chamber 2 WET threshold (%)</label>"
-          "<input type='number' step='1' name='c2Wet' value='" + String(gConfig.chamber2.soilWetThreshold) + "'></div>";
+          "<input type='number' step='1' name='c2SoilWet' value='" + String(gConfig.chamber2.soilWetThreshold) + "'><div class='small'>Keep wet > dry for stable pump automation.</div></div>";
   page += "<div class='field'><label>Chamber 1 profile ID (optional)</label>"
           "<input type='number' step='1' name='c1Prof' value='" + String(gConfig.chamber1.profileId) + "'></div>";
   page += "<div class='field'><label>Chamber 2 profile ID (optional)</label>"
@@ -758,7 +795,7 @@ static void handleConfigGet() {
   page += "<div class='field'><label>Pump maximum ON time (seconds)</label>"
           "<input type='number' step='1' name='pumpOn' value='" + String(gConfig.env.pumpMaxOnSec) + "'></div>";
   page += "</div>";
-  page += "<p class='small' style='margin-top:10px'>Tip: keep hysteresis sane (OFF < ON) to avoid oscillation. Names are limited to 24 characters, and wet thresholds must stay above dry thresholds per chamber.</p>";
+  page += "<p class='small' style='margin-top:10px'>Tip: keep hysteresis sane (OFF < ON) to avoid oscillation. Names are limited to 24 characters with HTML stripped. Wet thresholds must stay above dry thresholds per chamber while using the shared pump.</p>";
   page += "</div>";
 
   // LIGHTS
@@ -800,19 +837,48 @@ static void handleConfigGet() {
   // GROW PROFILE
   page += "<div class='tab-panel' data-tab='grow'>";
   page += "<div class='form-grid'>";
-  page += "<div class='field'><label>Preset</label><select name='growProfile'>";
-  page += "<option value='0' selected>Custom (no change)</option>";
-  page += "<option value='1'>Seedling</option>";
-  page += "<option value='2'>Vegetative</option>";
-  page += "<option value='3'>Flowering</option>";
-  page += "</select><div class='small'>Per-chamber soil thresholds and light schedules (Ch1 → Light 1, Ch2 → Light 2).</div></div>";
-  page += "<div class='field'><label>Apply preset to a chamber</label>";
+
+  auto profileOptions = [](int selectedId) -> String {
+    String opts;
+    opts.reserve(160);
+    for (size_t i = 0; i < growProfileCount(); i++) {
+      const GrowProfileInfo* info = growProfileInfoAt(i);
+      if (!info) continue;
+      opts += "<option value='" + String(i) + "'";
+      if ((int)i == selectedId) opts += " selected";
+      opts += ">" + htmlEscape(info->label) + "</option>";
+    }
+    return opts;
+  };
+
+  auto chamberProfileRow = [&](int idx, const ChamberConfig& cfg, int selectedId) {
+    const char* fallback = (idx == 0) ? DEFAULT_CHAMBER1_NAME : DEFAULT_CHAMBER2_NAME;
+    const String chamberName = cfg.name.length() ? cfg.name : String(fallback);
+    page += "<div class='field chamber-profile' data-chamber='" + String(idx) + "'>";
+    page += "<label>Preset for " + htmlEscape(chamberName) + "</label>";
+    page += "<div class='row' style='gap:8px;flex-wrap:wrap'>";
+    page += "<select id='prof-ch" + String(idx + 1) + "' name='growProfileCh" + String(idx + 1) + "'>";
+    page += profileOptions(selectedId);
+    page += "</select>";
+    page += "<button class='btn primary apply-profile' type='button' data-chamber='" + String(idx) + "'>";
+    page += "Apply to " + htmlEscape(chamberName);
+    page += "</button></div>";
+    page += "<div class='small'>Updates only this chamber's soil thresholds and linked light schedule/auto flag.</div></div>";
+  };
+
+  int chamber1Selected = (gConfig.chamber1.profileId > 0) ? gConfig.chamber1.profileId : 0;
+  int chamber2Selected = (gConfig.chamber2.profileId > 0) ? gConfig.chamber2.profileId : 0;
+  chamberProfileRow(0, gConfig.chamber1, chamber1Selected);
+  chamberProfileRow(1, gConfig.chamber2, chamber2Selected);
+
+  page += "<div class='field'><label>Apply preset to both + env</label>";
   page += "<div class='row' style='gap:8px;flex-wrap:wrap'>";
-  page += "<button class='btn primary' type='submit' name='applyProfileChamber' value='0'>Apply to Chamber 1 (Light 1)</button>";
-  page += "<button class='btn primary' type='submit' name='applyProfileChamber' value='1'>Apply to Chamber 2 (Light 2)</button>";
-  page += "</div>";
-  page += "<div class='small'>Updates only that chamber's soil thresholds and linked light schedule/auto flag.</div></div>";
-  page += "<div class='field'><label>&nbsp;</label><button class='btn' type='submit' name='applyProfile' value='1'>Apply to both + env</button><div class='small'>Applies env thresholds, both chambers, and any preset automation defaults.</div></div>";
+  page += "<select name='growProfileAll'>";
+  page += profileOptions(0);
+  page += "</select>";
+  page += "<button class='btn' type='submit' name='applyProfile' value='1'>Apply to both + env</button>";
+  page += "</div><div class='small'>Applies env thresholds, both chambers, and any preset automation defaults.</div></div>";
+
   page += "</div>";
   page += "<div class='small' style='margin-top:10px'>Preset preview:</div>";
   page += "<table class='table profile-summary' style='margin-top:6px'>";
@@ -883,9 +949,16 @@ static void handleConfigPost() {
   int originalTzIndex = gConfig.tzIndex;
   bool timezoneChanged = false;
 
+  auto chamberProfileArg = [&](int chamberIdx) -> String {
+    String field = String("growProfileCh") + String(chamberIdx + 1);
+    if (server.hasArg(field)) return server.arg(field);
+    if (server.hasArg("growProfile")) return server.arg("growProfile");
+    return String("");
+  };
+
   if (server.hasArg("applyProfileChamber")) {
-    int pid = server.arg("growProfile").toInt();
     int chamberIdx = server.arg("applyProfileChamber").toInt();
+    int pid = chamberProfileArg(chamberIdx).toInt();
     String appliedName;
     if (applyGrowProfileToChamber(chamberIdx, pid, appliedName)) {
       saveConfig();
@@ -899,7 +972,7 @@ static void handleConfigPost() {
   }
 
   if (server.hasArg("applyProfile")) {
-    int pid = server.arg("growProfile").toInt();
+    int pid = server.hasArg("growProfileAll") ? server.arg("growProfileAll").toInt() : server.arg("growProfile").toInt();
     String appliedName;
     if (applyGrowProfile(pid, appliedName)) {
       saveConfig();
@@ -946,19 +1019,31 @@ static void handleConfigPost() {
     n.trim();
     gConfig.chamber2.name = n;
   }
-  if (server.hasArg("c1Dry")) {
+  if (server.hasArg("c1SoilDry")) {
+    int v = server.arg("c1SoilDry").toInt();
+    gConfig.chamber1.soilDryThreshold = constrain(v, 0, 100);
+  } else if (server.hasArg("c1Dry")) {
     int v = server.arg("c1Dry").toInt();
     gConfig.chamber1.soilDryThreshold = constrain(v, 0, 100);
   }
-  if (server.hasArg("c1Wet")) {
+  if (server.hasArg("c1SoilWet")) {
+    int v = server.arg("c1SoilWet").toInt();
+    gConfig.chamber1.soilWetThreshold = constrain(v, 0, 100);
+  } else if (server.hasArg("c1Wet")) {
     int v = server.arg("c1Wet").toInt();
     gConfig.chamber1.soilWetThreshold = constrain(v, 0, 100);
   }
-  if (server.hasArg("c2Dry")) {
+  if (server.hasArg("c2SoilDry")) {
+    int v = server.arg("c2SoilDry").toInt();
+    gConfig.chamber2.soilDryThreshold = constrain(v, 0, 100);
+  } else if (server.hasArg("c2Dry")) {
     int v = server.arg("c2Dry").toInt();
     gConfig.chamber2.soilDryThreshold = constrain(v, 0, 100);
   }
-  if (server.hasArg("c2Wet")) {
+  if (server.hasArg("c2SoilWet")) {
+    int v = server.arg("c2SoilWet").toInt();
+    gConfig.chamber2.soilWetThreshold = constrain(v, 0, 100);
+  } else if (server.hasArg("c2Wet")) {
     int v = server.arg("c2Wet").toInt();
     gConfig.chamber2.soilWetThreshold = constrain(v, 0, 100);
   }
@@ -1086,6 +1171,7 @@ void initWebServer() {
   server.on("/api/status",       HTTP_GET,  handleStatusApi);
   server.on("/api/toggle",       HTTP_GET,  handleApiToggle);
   server.on("/api/mode",         HTTP_GET,  handleApiMode);
+  server.on("/api/grow/apply",   HTTP_GET,  handleApplyProfileChamberApi);
 
   server.on("/config",           HTTP_GET,  handleConfigGet);
   server.on("/config",           HTTP_POST, handleConfigPost);

@@ -78,6 +78,20 @@
     if (el) el.textContent = v;
   }
 
+  function setAppliedProfileBanner(label){
+    const banner = $("#appliedProfileBanner");
+    if (!banner) return;
+    if (label && label.length){
+      banner.textContent = `Applied profile: ${label}`;
+      banner.dataset.label = label;
+      banner.style.display = "";
+    } else {
+      banner.textContent = "";
+      banner.dataset.label = "";
+      banner.style.display = "none";
+    }
+  }
+
   function deriveChamberLabels(chambers){
     const list = Array.isArray(chambers) ? chambers : [];
     return [1, 2].map(idx => {
@@ -395,9 +409,40 @@
       const s = await apiGet(`/api/status?ts=${Date.now()}`);
       const tzLabel = s.timezone ? ` (${s.timezone})` : "";
       setText("#cfg-time", s.time_synced ? `${s.time}${tzLabel}` : "syncing…");
+
+      const banner = $("#appliedProfileBanner");
+      if (banner && banner.dataset.label){
+        setAppliedProfileBanner(banner.dataset.label);
+      }
     }catch(e){
       console.warn("Config status fetch failed", e);
     }
+
+    $$(".apply-profile").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const chamberIdx = Number(btn.dataset.chamber || "0");
+        const select = $(`#prof-ch${chamberIdx + 1}`);
+        const profileId = select ? Number(select.value) : 0;
+
+        btn.disabled = true;
+        btn.setAttribute("aria-busy", "true");
+        try{
+          const res = await apiGet(`/api/grow/apply?chamber=${encodeURIComponent(chamberIdx)}&profile=${encodeURIComponent(profileId)}`);
+          if (res?.ok){
+            const appliedName = res.applied_profile || "Custom";
+            const chamberName = res.chamber_name || `Chamber ${chamberIdx + 1}`;
+            const label = res.label || `${appliedName} -> ${chamberName}`;
+            setAppliedProfileBanner(label);
+            toast("Preset applied");
+          }
+        }catch(e){
+          toast(`Apply failed: ${e.message}`);
+        }finally{
+          btn.disabled = false;
+          btn.removeAttribute("aria-busy");
+        }
+      });
+    });
   }
 
   function initWifi(){

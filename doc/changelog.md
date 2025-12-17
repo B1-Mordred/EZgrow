@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Added chamber-scoped grow profile selectors with a `/api/grow/apply` endpoint, per-chamber soil inputs, HTML-stripped chamber names (1–24 chars), and updated config helper text for the shared pump.
 - Introduced per-chamber configuration (names, dry/wet thresholds, optional profile links) with new NVS keys, migration from legacy soil settings, and validation that enforces sane ranges.
 - Added dashboard stale detection with reconnect banner, throttled error toasts, and sensor sparklines that clear after repeated invalid readings.
 - Provided AUTO block reason feedback for manual toggles (with pump-on confirmation) and improved config UI with grow profile previews plus current time display.

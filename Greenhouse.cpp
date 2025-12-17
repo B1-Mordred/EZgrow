@@ -126,11 +126,23 @@ bool scheduleIsOn(int onMin, int offMin, int nowMin) {
   }
 }
 
+static String sanitizeChamberName(const String &in) {
+  String out;
+  out.reserve(in.length());
+  for (size_t i = 0; i < in.length(); i++) {
+    char c = in[i];
+    if (c == '<' || c == '>' || (uint8_t)c < 0x20) continue;
+    out += c;
+  }
+  out.trim();
+  return out;
+}
+
 bool normalizeChamberConfig(ChamberConfig &c, const char* defaultName) {
   bool changed = false;
 
   String originalName = c.name;
-  c.name.trim();
+  c.name = sanitizeChamberName(c.name);
   if (c.name != originalName) {
     changed = true;
   }

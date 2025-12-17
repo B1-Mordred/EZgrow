@@ -23,7 +23,7 @@ It displays status on a small **0.91" WE-DA-361 I²C OLED** and exposes a web UI
 - Live sparklines for sensors on the dashboard
 - Grow profile tab with preset previews, chamber-targeted apply (Ch1→Light1, Ch2→Light2), plus system tab showing current device time
 - Relay controls that disable while requests are processing, with toast feedback for mode/toggle actions
-- Per-chamber dashboard labeling for soil tiles and light controls, with `/api/status` exposing chamber metadata for UI and integrations
+- Per-chamber dashboard labeling for soil tiles and light controls, with `/api/status` exposing chamber metadata (including `id` 1/2 and `idx` 0/1) for UI and integrations
 - **Wi-Fi configuration** (scan SSIDs, select, store SSID/password in NVS)
 - **HTTP Basic Authentication** (credentials stored in NVS, configurable in UI)
 - **Captive portal** for Wi-Fi onboarding in AP mode (auto-redirects to `/wifi`)
@@ -463,8 +463,8 @@ On submit:
   - For lights: toggles use of schedule (AUTO) vs manual relay control.
   - For fan/pump: toggles automatic control logic vs manual relay control.  
   Protected by Basic Auth in STA mode.
-- `GET /api/grow/apply?chamber=0|1&profile=0-3`  
-  Applies a grow profile to a single chamber (soil thresholds + linked light schedule/auto) and returns a JSON payload with the applied label and chamber metadata.  
+- `GET /api/grow/apply?chamber=0|1|2&profile=0-3` (or `chamber_id=1|2`)  
+  Applies a grow profile to a single chamber (soil thresholds + linked light schedule/auto). Accepts legacy zero-based indexes (`0`/`1`) or chamber IDs (`1`/`2`, with `2` also accepted via `chamber=2`) and responds with both `chamber_idx` and `chamber_id` alongside the applied label and chamber metadata.  
   Protected by Basic Auth in STA mode.
 
 ### 4.5 History API (`/api/history`)

@@ -92,10 +92,36 @@
     }
   }
 
+  function parseChamberDatasetValue(raw, preferId = false){
+    if (raw == null) return null;
+    const str = String(raw).trim();
+    if (!/^[0-9]+$/.test(str)) return null;
+    const val = Number(str);
+    if (preferId){
+      if (val >= 1 && val <= 2){
+        return { chamberIdx: val - 1, chamberId: val, requestValue: val };
+      }
+      return null;
+    }
+    if (val === 0 || val === 1){
+      return { chamberIdx: val, chamberId: val + 1, requestValue: val };
+    }
+    if (val === 2){
+      return { chamberIdx: 1, chamberId: 2, requestValue: 2 };
+    }
+    return null;
+  }
+
+  function resolveChamberDataset(dataset){
+    return parseChamberDatasetValue(dataset?.chamberId, true)
+        || parseChamberDatasetValue(dataset?.chamber, false)
+        || { chamberIdx: 0, chamberId: 1, requestValue: 0 };
+  }
+
   function deriveChamberLabels(chambers){
     const list = Array.isArray(chambers) ? chambers : [];
     return [1, 2].map(idx => {
-      const entry = list.find(c => Number(c?.id) === idx);
+      const entry = list.find(c => Number(c?.id) === idx) || list.find(c => Number(c?.idx) === (idx - 1));
       const name = (entry && typeof entry.name === "string") ? entry.name.trim() : "";
       return name || `Chamber ${idx}`;
     });
@@ -430,17 +456,18 @@
 
     $$(".apply-profile").forEach(btn => {
       btn.addEventListener("click", async () => {
-        const chamberIdx = Number(btn.dataset.chamber || "0");
+        const { chamberIdx, chamberId, requestValue } = resolveChamberDataset(btn.dataset || {});
         const select = $(`#prof-ch${chamberIdx + 1}`);
         const profileId = select ? Number(select.value) : 0;
 
         btn.disabled = true;
         btn.setAttribute("aria-busy", "true");
         try{
-          const res = await apiGet(`/api/grow/apply?chamber=${encodeURIComponent(chamberIdx)}&profile=${encodeURIComponent(profileId)}`);
+          const res = await apiGet(`/api/grow/apply?chamber=${encodeURIComponent(requestValue)}&profile=${encodeURIComponent(profileId)}`);
           if (res?.ok){
             const appliedName = res.applied_profile || "Custom";
-            const chamberName = res.chamber_name || `Chamber ${chamberIdx + 1}`;
+            const resChamberId = Number(res.chamber_id);
+            const chamberName = res.chamber_name || `Chamber ${Number.isFinite(resChamberId) && resChamberId > 0 ? resChamberId : chamberId}`;
             const label = res.label || `${appliedName} -> ${chamberName}`;
             setAppliedProfileBanner(label);
             toast("Preset applied");

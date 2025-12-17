@@ -180,7 +180,7 @@ The device supports:
 
 - **Pump control** (automatic):
   - Soil moisture-based control using 2 sensors and configurable:
-    - Dry/wet thresholds (`soilDryThreshold`, `soilWetThreshold`).
+    - Per-chamber configs (`ChamberConfig`): name, dry/wet thresholds, and optional profile IDs.
     - Minimum OFF time (`pumpMinOffSec`).
     - Maximum ON time (`pumpMaxOnSec`).
 
@@ -483,8 +483,9 @@ Hysteresis ensures stable behaviour (`fanOnTemp > fanOffTemp` and `fanHumOn > fa
 
 If `autoPump` is enabled:
 
-- “Too dry” if **either** soil sensor `< soilDryThreshold`.
-- “Wet enough” if **both** soil sensors `> soilWetThreshold`.
+- “Too dry” if soil sensor 1 `< chamber1.soilDryThreshold` **or** soil sensor 2 `< chamber2.soilDryThreshold`.
+- “Wet enough” if soil sensor 1 `> chamber1.soilWetThreshold` **and** soil sensor 2 `> chamber2.soilWetThreshold`.
+- Chamber names (max 24 chars) and optional profile IDs are stored per chamber; thresholds are clamped to 0–100 with wet > dry enforced.
 - Pump turns **ON** when:
   - Not currently running, AND
   - “Too dry”, AND
@@ -554,7 +555,7 @@ To calibrate:
    soilPercent = constrain(soilPercent, 0, 100);
    ```
 
-Then adjust `soilDryThreshold` and `soilWetThreshold` via `/config`.
+Then adjust per-chamber dry/wet thresholds (and optional chamber names) via `/config`.
 
 ### 7.2 Temperature & Humidity Thresholds
 

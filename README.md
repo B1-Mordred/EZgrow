@@ -21,7 +21,7 @@ It displays status on a small **0.91" WE-DA-361 I²C OLED** and exposes a web UI
 - History charts (temperature, humidity, light states)
 - History chart labels use the device timezone when supported by the browser.
 - Live sparklines for sensors on the dashboard
-- Grow profile tab with preset previews plus system tab showing current device time
+- Grow profile tab with preset previews, chamber-targeted apply (Ch1→Light1, Ch2→Light2), plus system tab showing current device time
 - Relay controls that disable while requests are processing, with toast feedback for mode/toggle actions
 - **Wi-Fi configuration** (scan SSIDs, select, store SSID/password in NVS)
 - **HTTP Basic Authentication** (credentials stored in NVS, configurable in UI)
@@ -406,7 +406,8 @@ Protected by Basic Auth in STA mode. The page uses tabs:
 - **Automation**
   - AUTO/MANUAL toggles for the fan and pump.
 - **Grow profile**
-  - Select and apply presets (Seedling, Vegetative, Flowering) that set thresholds, schedules, and default automation modes.
+  - Select Seedling/Vegetative/Flowering presets and apply them per chamber (Ch1 → Light 1, Ch2 → Light 2) or across both chambers + environment.
+  - Per-chamber apply only adjusts that chamber's soil thresholds and mapped light schedule/auto flag, leaving other chambers and automation settings untouched.
   - Preview table shows preset values before applying.
 - **System**
   - Displays the current device time.

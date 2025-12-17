@@ -82,3 +82,13 @@ test('withRelayGuard surfaces errors with toasts and restores controls', async (
   assert.ok(toastEl);
   assert.ok(toastEl.textContent.includes('Toggle failed: boom'));
 });
+
+test('withRelayGuard tolerates missing controls', async () => {
+  const dom = setupDom("<!doctype html><body data-page=''></body>");
+  let ran = false;
+  await dom.window.__app.withRelayGuard('pump', async () => {
+    ran = true;
+    return 'ok';
+  });
+  assert.equal(ran, true);
+});

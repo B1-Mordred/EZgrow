@@ -50,6 +50,8 @@ struct GrowProfileInfo {
   LightSchedule light2;
   bool autoFan;
   bool autoPump;
+  bool setsAutoFan;
+  bool setsAutoPump;
   ChamberConfig chamber1;
   ChamberConfig chamber2;
 };
@@ -127,6 +129,9 @@ void applyTimezoneFromConfig();
 // Apply a grow profile preset by ID (0=Custom/no-op, 1=Seedling, 2=Vegetative, 3=Flowering)
 // Returns true if applied and fills appliedName with the profile label.
 bool applyGrowProfile(int profileId, String &appliedName);
+// Apply a grow profile to a single chamber (0=chamber1/light1, 1=chamber2/light2).
+// Updates soil thresholds and the mapped light schedule/auto flag for that chamber only.
+bool applyGrowProfileToChamber(int chamberIdx, int profileId, String &appliedName);
 size_t growProfileCount();
 const GrowProfileInfo* growProfileInfoAt(size_t idx);
 

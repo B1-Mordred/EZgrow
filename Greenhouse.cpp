@@ -444,48 +444,98 @@ void saveConfig() {
 
 struct GrowProfilePreset {
   const char* label;
-  float       fanOn;
-  float       fanOff;
-  int         fanHumOn;
-  int         fanHumOff;
-  int         soilDry;
-  int         soilWet;
-  unsigned long pumpMinOff;
-  unsigned long pumpMaxOn;
-  int         l1On;
-  int         l1Off;
-  int         l2On;
-  int         l2Off;
-  bool        lightsAuto;
-  bool        autoFan;
-  bool        autoPump;
+  EnvConfig   env;
+  struct ChamberProfilePreset {
+    int soilDry;
+    int soilWet;
+    int lightOnMinutes;
+    int lightOffMinutes;
+    bool lightAuto;
+  } chambers[2];
+  bool setAutoFan;
+  bool setAutoPump;
+  bool autoFan;
+  bool autoPump;
 };
 
 static const GrowProfilePreset kGrowProfiles[] = {
-  { "Custom",       0,    0,   0,   0,   0,  0, 0,    0,    0,    0,    0,    0, false, false, false },
-  { "Seedling",    27.0, 25.0, 78,  68,  40, 55, 240, 20,  6*60, 24*60-1, 6*60, 24*60-1, true,  true,  true },
-  { "Vegetative",  28.0, 26.0, 75,  65,  38, 52, 300, 25,  6*60, 24*60-1, 6*60, 24*60-1, true,  true,  true },
-  { "Flowering",   27.0, 25.0, 72,  62,  35, 50, 420, 20,  8*60, 20*60,   8*60, 20*60,   true,  true,  true },
+  { "Custom",
+    { 0, 0, 0, 0, 0, 0 },
+    {
+      { DEFAULT_SOIL_DRY, DEFAULT_SOIL_WET, 8*60, 20*60, true },
+      { DEFAULT_SOIL_DRY, DEFAULT_SOIL_WET, 8*60, 20*60, true },
+    },
+    false, false, false, false
+  },
+  { "Seedling",
+    { 27.0f, 25.0f, 78, 68, 240, 20 },
+    {
+      { 40, 55, 6*60, 24*60-1, true },
+      { 40, 55, 6*60, 24*60-1, true },
+    },
+    true, true, true, true
+  },
+  { "Vegetative",
+    { 28.0f, 26.0f, 75, 65, 300, 25 },
+    {
+      { 38, 52, 6*60, 24*60-1, true },
+      { 38, 52, 6*60, 24*60-1, true },
+    },
+    true, true, true, true
+  },
+  { "Flowering",
+    { 27.0f, 25.0f, 72, 62, 420, 20 },
+    {
+      { 35, 50, 8*60, 20*60, true },
+      { 35, 50, 8*60, 20*60, true },
+    },
+    true, true, true, true
+  },
 };
 
 static GrowProfileInfo profileInfoFromPreset(const GrowProfilePreset &p){
   GrowProfileInfo info;
   info.label = p.label;
-  info.env = {
-    p.fanOn,
-    p.fanOff,
-    p.fanHumOn,
-    p.fanHumOff,
-    p.pumpMinOff,
-    p.pumpMaxOn,
-  };
-  info.light1 = { p.l1On, p.l1Off, p.lightsAuto };
-  info.light2 = { p.l2On, p.l2Off, p.lightsAuto };
+  info.env   = p.env;
+  info.light1 = { p.chambers[0].lightOnMinutes, p.chambers[0].lightOffMinutes, p.chambers[0].lightAuto };
+  info.light2 = { p.chambers[1].lightOnMinutes, p.chambers[1].lightOffMinutes, p.chambers[1].lightAuto };
   info.autoFan = p.autoFan;
   info.autoPump = p.autoPump;
-  info.chamber1 = { String(DEFAULT_CHAMBER1_NAME), p.soilDry, p.soilWet, -1 };
-  info.chamber2 = { String(DEFAULT_CHAMBER2_NAME), p.soilDry, p.soilWet, -1 };
+  info.setsAutoFan = p.setAutoFan;
+  info.setsAutoPump = p.setAutoPump;
+  info.chamber1 = { String(DEFAULT_CHAMBER1_NAME), p.chambers[0].soilDry, p.chambers[0].soilWet, -1 };
+  info.chamber2 = { String(DEFAULT_CHAMBER2_NAME), p.chambers[1].soilDry, p.chambers[1].soilWet, -1 };
   return info;
+}
+
+bool applyGrowProfileToChamber(int chamberIdx, int profileId, String &appliedName) {
+  if (profileId < 0 || (size_t)profileId >= (sizeof(kGrowProfiles)/sizeof(kGrowProfiles[0]))) {
+    return false;
+  }
+  if (chamberIdx < 0 || chamberIdx > 1) {
+    return false;
+  }
+
+  const GrowProfilePreset &p = kGrowProfiles[profileId];
+  appliedName = p.label;
+  if (profileId == 0) {
+    return true; // Custom: no changes
+  }
+
+  ChamberConfig* chamber = (chamberIdx == 0) ? &gConfig.chamber1 : &gConfig.chamber2;
+  LightSchedule* light   = (chamberIdx == 0) ? &gConfig.light1   : &gConfig.light2;
+  const GrowProfilePreset::ChamberProfilePreset &chPreset = p.chambers[chamberIdx];
+
+  chamber->soilDryThreshold = chPreset.soilDry;
+  chamber->soilWetThreshold = chPreset.soilWet;
+  chamber->profileId = (profileId > 0) ? profileId : -1;
+  normalizeChamberConfig(*chamber, chamberIdx == 0 ? DEFAULT_CHAMBER1_NAME : DEFAULT_CHAMBER2_NAME);
+
+  light->onMinutes  = chPreset.lightOnMinutes;
+  light->offMinutes = chPreset.lightOffMinutes;
+  light->enabled    = chPreset.lightAuto;
+
+  return true;
 }
 
 bool applyGrowProfile(int profileId, String &appliedName) {
@@ -499,34 +549,14 @@ bool applyGrowProfile(int profileId, String &appliedName) {
     return true; // Custom: no changes
   }
 
-  gConfig.env.fanOnTemp        = p.fanOn;
-  gConfig.env.fanOffTemp       = p.fanOff;
-  gConfig.env.fanHumOn         = p.fanHumOn;
-  gConfig.env.fanHumOff        = p.fanHumOff;
-  gConfig.env.pumpMinOffSec    = p.pumpMinOff;
-  gConfig.env.pumpMaxOnSec     = p.pumpMaxOn;
+  gConfig.env = p.env;
 
-  gConfig.light1.onMinutes  = p.l1On;
-  gConfig.light1.offMinutes = p.l1Off;
-  gConfig.light1.enabled    = p.lightsAuto;
+  bool c1 = applyGrowProfileToChamber(0, profileId, appliedName);
+  bool c2 = applyGrowProfileToChamber(1, profileId, appliedName);
+  if (!c1 || !c2) return false;
 
-  gConfig.light2.onMinutes  = p.l2On;
-  gConfig.light2.offMinutes = p.l2Off;
-  gConfig.light2.enabled    = p.lightsAuto;
-
-  gConfig.autoFan  = p.autoFan;
-  gConfig.autoPump = p.autoPump;
-
-  gConfig.chamber1.soilDryThreshold = p.soilDry;
-  gConfig.chamber1.soilWetThreshold = p.soilWet;
-  gConfig.chamber2.soilDryThreshold = p.soilDry;
-  gConfig.chamber2.soilWetThreshold = p.soilWet;
-  int profileIdToStore = (profileId > 0) ? profileId : -1;
-  gConfig.chamber1.profileId = profileIdToStore;
-  gConfig.chamber2.profileId = profileIdToStore;
-
-  normalizeChamberConfig(gConfig.chamber1, DEFAULT_CHAMBER1_NAME);
-  normalizeChamberConfig(gConfig.chamber2, DEFAULT_CHAMBER2_NAME);
+  if (p.setAutoFan)  gConfig.autoFan  = p.autoFan;
+  if (p.setAutoPump) gConfig.autoPump = p.autoPump;
 
   appliedName = p.label;
   return true;

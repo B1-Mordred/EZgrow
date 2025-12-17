@@ -22,6 +22,7 @@ static String sWebAuthPass;
 
 static String htmlBool(bool b) { return b ? "ON" : "OFF"; }
 static String htmlAuto(bool a) { return a ? "AUTO" : "MAN"; }
+static String htmlAutoChange(bool applies, bool a) { return applies ? htmlAuto(a) : String("—"); }
 
 static String minutesToTimeStrSafe(int mins) {
   mins = constrain(mins, 0, 24 * 60 - 1);
@@ -780,23 +781,30 @@ static void handleConfigGet() {
   page += "<option value='1'>Seedling</option>";
   page += "<option value='2'>Vegetative</option>";
   page += "<option value='3'>Flowering</option>";
-  page += "</select><div class='small'>Apply preset thresholds, schedules, and automation defaults.</div></div>";
-  page += "<div class='field'><label>&nbsp;</label><button class='btn primary' type='submit' name='applyProfile' value='1'>Apply preset</button><div class='small'>Values are saved immediately.</div></div>";
+  page += "</select><div class='small'>Per-chamber soil thresholds and light schedules (Ch1 → Light 1, Ch2 → Light 2).</div></div>";
+  page += "<div class='field'><label>Apply preset to a chamber</label>";
+  page += "<div class='row' style='gap:8px;flex-wrap:wrap'>";
+  page += "<button class='btn primary' type='submit' name='applyProfileChamber' value='0'>Apply to Chamber 1 (Light 1)</button>";
+  page += "<button class='btn primary' type='submit' name='applyProfileChamber' value='1'>Apply to Chamber 2 (Light 2)</button>";
+  page += "</div>";
+  page += "<div class='small'>Updates only that chamber's soil thresholds and linked light schedule/auto flag.</div></div>";
+  page += "<div class='field'><label>&nbsp;</label><button class='btn' type='submit' name='applyProfile' value='1'>Apply to both + env</button><div class='small'>Applies env thresholds, both chambers, and any preset automation defaults.</div></div>";
   page += "</div>";
   page += "<div class='small' style='margin-top:10px'>Preset preview:</div>";
   page += "<table class='table profile-summary' style='margin-top:6px'>";
-  page += "<tr><th>Preset</th><th>Fan on/off (°C)</th><th>Hum on/off (%)</th><th>Soil dry/wet (%) (C1/C2)</th><th>Pump OFF/ON (s)</th><th>Light window</th><th>Fan/Pump mode</th></tr>";
+  page += "<tr><th>Preset</th><th>Ch1 soil (dry/wet %)</th><th>Ch2 soil (dry/wet %)</th><th>Light windows (L1/L2)</th><th>Fan on/off (°C)</th><th>Hum on/off (%)</th><th>Pump OFF/ON (s)</th><th>Fan/Pump mode change</th></tr>";
   for (size_t i = 0; i < growProfileCount(); i++) {
     const GrowProfileInfo* info = growProfileInfoAt(i);
     if (!info) continue;
     page += "<tr><td>" + htmlEscape(info->label) + "</td>";
+    page += "<td>" + String(info->chamber1.soilDryThreshold) + " / " + String(info->chamber1.soilWetThreshold) + "</td>";
+    page += "<td>" + String(info->chamber2.soilDryThreshold) + " / " + String(info->chamber2.soilWetThreshold) + "</td>";
+    page += "<td>L1 " + minutesToTimeStrSafe(info->light1.onMinutes) + "–" + minutesToTimeStrSafe(info->light1.offMinutes) +
+            " · L2 " + minutesToTimeStrSafe(info->light2.onMinutes) + "–" + minutesToTimeStrSafe(info->light2.offMinutes) + "</td>";
     page += "<td>" + String(info->env.fanOnTemp, 1) + " / " + String(info->env.fanOffTemp, 1) + "</td>";
     page += "<td>" + String(info->env.fanHumOn) + " / " + String(info->env.fanHumOff) + "</td>";
-    page += "<td>C1 " + String(info->chamber1.soilDryThreshold) + " / " + String(info->chamber1.soilWetThreshold) +
-            " · C2 " + String(info->chamber2.soilDryThreshold) + " / " + String(info->chamber2.soilWetThreshold) + "</td>";
     page += "<td>" + String(info->env.pumpMinOffSec) + " / " + String(info->env.pumpMaxOnSec) + "</td>";
-    page += "<td>" + minutesToTimeStrSafe(info->light1.onMinutes) + "–" + minutesToTimeStrSafe(info->light1.offMinutes) + "</td>";
-    page += "<td>Fan " + htmlAuto(info->autoFan) + " · Pump " + htmlAuto(info->autoPump) + "</td></tr>";
+    page += "<td>Fan " + htmlAutoChange(info->setsAutoFan, info->autoFan) + " · Pump " + htmlAutoChange(info->setsAutoPump, info->autoPump) + "</td></tr>";
   }
   page += "</table>";
   page += "</div>";
@@ -850,6 +858,21 @@ static void handleConfigPost() {
 
   int originalTzIndex = gConfig.tzIndex;
   bool timezoneChanged = false;
+
+  if (server.hasArg("applyProfileChamber")) {
+    int pid = server.arg("growProfile").toInt();
+    int chamberIdx = server.arg("applyProfileChamber").toInt();
+    String appliedName;
+    if (applyGrowProfileToChamber(chamberIdx, pid, appliedName)) {
+      saveConfig();
+      const char* fallbackName = (chamberIdx == 0) ? DEFAULT_CHAMBER1_NAME : DEFAULT_CHAMBER2_NAME;
+      const String chamberName = (chamberIdx == 0) ? gConfig.chamber1.name : (chamberIdx == 1 ? gConfig.chamber2.name : String(fallbackName));
+      String label = appliedName + " -> " + (chamberName.length() ? chamberName : String(fallbackName));
+      server.sendHeader("Location", String("/config?appliedProfile=") + urlencode(label), true);
+      server.send(302, "text/plain", "");
+      return;
+    }
+  }
 
   if (server.hasArg("applyProfile")) {
     int pid = server.arg("growProfile").toInt();

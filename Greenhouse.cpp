@@ -34,17 +34,18 @@ static const char* NTP_SERVER2 = "time.nist.gov";
 
 struct TzOption {
   const char* label;
+  const char* iana;
   const char* tz;
 };
 
 static const TzOption TZ_OPTIONS[] = {
-  { "UTC",           "UTC0" },
-  { "Europe/Berlin", "CET-1CEST,M3.5.0,M10.5.0/3" },
-  { "Europe/London", "GMT0BST,M3.5.0/1,M10.5.0" },
-  { "US/Eastern",    "EST5EDT,M3.2.0,M11.1.0" },
-  { "US/Central",    "CST6CDT,M3.2.0,M11.1.0" },
-  { "US/Mountain",   "MST7MDT,M3.2.0,M11.1.0" },
-  { "US/Pacific",    "PST8PDT,M3.2.0,M11.1.0" },
+  { "UTC",           "UTC",             "UTC0" },
+  { "Europe/Berlin", "Europe/Berlin",   "CET-1CEST,M3.5.0,M10.5.0/3" },
+  { "Europe/London", "Europe/London",   "GMT0BST,M3.5.0/1,M10.5.0" },
+  { "US/Eastern",    "America/New_York",    "EST5EDT,M3.2.0,M11.1.0" },
+  { "US/Central",    "America/Chicago",     "CST6CDT,M3.2.0,M11.1.0" },
+  { "US/Mountain",   "America/Denver",      "MST7MDT,M3.2.0,M11.1.0" },
+  { "US/Pacific",    "America/Los_Angeles", "PST8PDT,M3.2.0,M11.1.0" },
 };
 static const size_t TZ_COUNT = sizeof(TZ_OPTIONS) / sizeof(TZ_OPTIONS[0]);
 
@@ -190,9 +191,18 @@ const char* greenhouseTimezoneLabel() {
   return currentTzOption().label;
 }
 
+const char* greenhouseTimezoneIana() {
+  return currentTzOption().iana;
+}
+
 const char* greenhouseTimezoneLabelAt(size_t idx) {
   if (idx >= TZ_COUNT) return "";
   return TZ_OPTIONS[idx].label;
+}
+
+const char* greenhouseTimezoneIanaAt(size_t idx) {
+  if (idx >= TZ_COUNT) return "";
+  return TZ_OPTIONS[idx].iana;
 }
 
 size_t greenhouseTimezoneCount() {

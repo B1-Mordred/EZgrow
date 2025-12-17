@@ -247,6 +247,7 @@ static void handleStatusApi() {
   json += "\"time\":\"" + jsonEscape(timeStr) + "\",";
   json += "\"time_synced\":"; json += (timeAvail ? "true" : "false"); json += ",";
   json += "\"timezone\":\"" + jsonEscape(greenhouseTimezoneLabel()) + "\",";
+  json += "\"timezone_iana\":\"" + jsonEscape(greenhouseTimezoneIana()) + "\",";
 
   json += "\"wifi\":{";
   json += "\"connected\":"; json += (connected ? "true" : "false"); json += ",";

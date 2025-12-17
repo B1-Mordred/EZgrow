@@ -29,12 +29,17 @@ function setupDom(html = "<!doctype html><body data-page=''></body>", fetchImpl)
 test('deriveChamberLabels trims names and falls back to defaults', () => {
   const dom = setupDom();
   const derive = dom.window.__app.deriveChamberLabels;
+  const resolveTimezone = dom.window.__app.resolveTimezone;
 
   assert.deepEqual(
     derive([{ id:1, name:"  Herbs " }, { id:2, name:"" }]),
     ["Herbs", "Chamber 2"]
   );
   assert.deepEqual(derive([]), ["Chamber 1", "Chamber 2"]);
+
+  assert.equal(resolveTimezone({ timezone_iana:"America/New_York", timezone:"US/Eastern" }), "America/New_York");
+  assert.equal(resolveTimezone({ timezone:"Europe/Berlin" }), "Europe/Berlin");
+  assert.equal(resolveTimezone({ timezone:"UTC" }), "");
 });
 
 test('dashboard refresh populates chamber labels with fallbacks', async () => {
@@ -42,6 +47,7 @@ test('dashboard refresh populates chamber labels with fallbacks', async () => {
     time:"10:00:00",
     time_synced:true,
     timezone:"UTC",
+    timezone_iana:"Etc/UTC",
     wifi:{ connected:false, mode:"AP" },
     sensors:{ temp_c:22.3, hum_rh:55, soil1:30, soil2:40 },
     chambers:[{ id:1, name:"Leafy Greens" }, { id:2, name:"" }],
@@ -77,7 +83,7 @@ test('config grow profile buttons call chamber endpoint and update banner', asyn
     const urlStr = (typeof url === 'string') ? url : (url && url.url ? url.url : String(url));
     calls.push(urlStr);
     if (urlStr.startsWith('/api/status')) {
-      return { ok:true, json: async () => ({ time:"12:00:00", time_synced:true, timezone:"UTC" }) };
+      return { ok:true, json: async () => ({ time:"12:00:00", time_synced:true, timezone:"UTC", timezone_iana:"Etc/UTC" }) };
     }
     if (urlStr.startsWith('/api/grow/apply')) {
       return { ok:true, json: async () => ({

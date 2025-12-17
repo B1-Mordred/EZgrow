@@ -587,10 +587,18 @@ static void handleRoot() {
   page += String(gConfig.env.fanOffTemp, 1);
   page += " °C and ≤ ";
   page += String(gConfig.env.fanHumOff);
-  page += "% RH. Pump: dry &lt; ";
-  page += String(gConfig.env.soilDryThreshold);
+  page += "% RH. Pump: ";
+  page += htmlEscape(gConfig.chamber1.name);
+  page += " dry &lt; ";
+  page += String(gConfig.chamber1.soilDryThreshold);
   page += "%, wet &gt; ";
-  page += String(gConfig.env.soilWetThreshold);
+  page += String(gConfig.chamber1.soilWetThreshold);
+  page += "% · ";
+  page += htmlEscape(gConfig.chamber2.name);
+  page += " dry &lt; ";
+  page += String(gConfig.chamber2.soilDryThreshold);
+  page += "%, wet &gt; ";
+  page += String(gConfig.chamber2.soilWetThreshold);
   page += "%.</p>";
 
   page += "</div>"; // card
@@ -704,16 +712,28 @@ static void handleConfigGet() {
           "<input type='number' step='1' name='fanHumOn' value='" + String(gConfig.env.fanHumOn) + "'></div>";
   page += "<div class='field'><label>Fan OFF humidity (%RH)</label>"
           "<input type='number' step='1' name='fanHumOff' value='" + String(gConfig.env.fanHumOff) + "'></div>";
-  page += "<div class='field'><label>Soil DRY threshold (%)</label>"
-          "<input type='number' step='1' name='soilDry' value='" + String(gConfig.env.soilDryThreshold) + "'></div>";
-  page += "<div class='field'><label>Soil WET threshold (%)</label>"
-          "<input type='number' step='1' name='soilWet' value='" + String(gConfig.env.soilWetThreshold) + "'></div>";
+  page += "<div class='field'><label>Chamber 1 name</label>"
+          "<input type='text' maxlength='24' name='c1Name' value='" + htmlEscape(gConfig.chamber1.name) + "'></div>";
+  page += "<div class='field'><label>Chamber 2 name</label>"
+          "<input type='text' maxlength='24' name='c2Name' value='" + htmlEscape(gConfig.chamber2.name) + "'></div>";
+  page += "<div class='field'><label>Chamber 1 DRY threshold (%)</label>"
+          "<input type='number' step='1' name='c1Dry' value='" + String(gConfig.chamber1.soilDryThreshold) + "'></div>";
+  page += "<div class='field'><label>Chamber 1 WET threshold (%)</label>"
+          "<input type='number' step='1' name='c1Wet' value='" + String(gConfig.chamber1.soilWetThreshold) + "'></div>";
+  page += "<div class='field'><label>Chamber 2 DRY threshold (%)</label>"
+          "<input type='number' step='1' name='c2Dry' value='" + String(gConfig.chamber2.soilDryThreshold) + "'></div>";
+  page += "<div class='field'><label>Chamber 2 WET threshold (%)</label>"
+          "<input type='number' step='1' name='c2Wet' value='" + String(gConfig.chamber2.soilWetThreshold) + "'></div>";
+  page += "<div class='field'><label>Chamber 1 profile ID (optional)</label>"
+          "<input type='number' step='1' name='c1Prof' value='" + String(gConfig.chamber1.profileId) + "'></div>";
+  page += "<div class='field'><label>Chamber 2 profile ID (optional)</label>"
+          "<input type='number' step='1' name='c2Prof' value='" + String(gConfig.chamber2.profileId) + "'></div>";
   page += "<div class='field'><label>Pump minimum OFF time (seconds)</label>"
           "<input type='number' step='1' name='pumpOff' value='" + String(gConfig.env.pumpMinOffSec) + "'></div>";
   page += "<div class='field'><label>Pump maximum ON time (seconds)</label>"
           "<input type='number' step='1' name='pumpOn' value='" + String(gConfig.env.pumpMaxOnSec) + "'></div>";
   page += "</div>";
-  page += "<p class='small' style='margin-top:10px'>Tip: keep hysteresis sane (OFF < ON) to avoid oscillation.</p>";
+  page += "<p class='small' style='margin-top:10px'>Tip: keep hysteresis sane (OFF < ON) to avoid oscillation. Names are limited to 24 characters, and wet thresholds must stay above dry thresholds per chamber.</p>";
   page += "</div>";
 
   // LIGHTS
@@ -765,14 +785,15 @@ static void handleConfigGet() {
   page += "</div>";
   page += "<div class='small' style='margin-top:10px'>Preset preview:</div>";
   page += "<table class='table profile-summary' style='margin-top:6px'>";
-  page += "<tr><th>Preset</th><th>Fan on/off (°C)</th><th>Hum on/off (%)</th><th>Soil dry/wet (%)</th><th>Pump OFF/ON (s)</th><th>Light window</th><th>Fan/Pump mode</th></tr>";
+  page += "<tr><th>Preset</th><th>Fan on/off (°C)</th><th>Hum on/off (%)</th><th>Soil dry/wet (%) (C1/C2)</th><th>Pump OFF/ON (s)</th><th>Light window</th><th>Fan/Pump mode</th></tr>";
   for (size_t i = 0; i < growProfileCount(); i++) {
     const GrowProfileInfo* info = growProfileInfoAt(i);
     if (!info) continue;
     page += "<tr><td>" + htmlEscape(info->label) + "</td>";
     page += "<td>" + String(info->env.fanOnTemp, 1) + " / " + String(info->env.fanOffTemp, 1) + "</td>";
     page += "<td>" + String(info->env.fanHumOn) + " / " + String(info->env.fanHumOff) + "</td>";
-    page += "<td>" + String(info->env.soilDryThreshold) + " / " + String(info->env.soilWetThreshold) + "</td>";
+    page += "<td>C1 " + String(info->chamber1.soilDryThreshold) + " / " + String(info->chamber1.soilWetThreshold) +
+            " · C2 " + String(info->chamber2.soilDryThreshold) + " / " + String(info->chamber2.soilWetThreshold) + "</td>";
     page += "<td>" + String(info->env.pumpMinOffSec) + " / " + String(info->env.pumpMaxOnSec) + "</td>";
     page += "<td>" + minutesToTimeStrSafe(info->light1.onMinutes) + "–" + minutesToTimeStrSafe(info->light1.offMinutes) + "</td>";
     page += "<td>Fan " + htmlAuto(info->autoFan) + " · Pump " + htmlAuto(info->autoPump) + "</td></tr>";
@@ -868,18 +889,41 @@ static void handleConfigPost() {
     gConfig.env.fanHumOff = 70;
   }
 
-  if (server.hasArg("soilDry")) {
-    int v = server.arg("soilDry").toInt();
-    gConfig.env.soilDryThreshold = constrain(v, 0, 100);
+  if (server.hasArg("c1Name")) {
+    String n = server.arg("c1Name");
+    n.trim();
+    gConfig.chamber1.name = n;
   }
-  if (server.hasArg("soilWet")) {
-    int v = server.arg("soilWet").toInt();
-    gConfig.env.soilWetThreshold = constrain(v, 0, 100);
+  if (server.hasArg("c2Name")) {
+    String n = server.arg("c2Name");
+    n.trim();
+    gConfig.chamber2.name = n;
   }
-  if (gConfig.env.soilWetThreshold <= gConfig.env.soilDryThreshold) {
-    gConfig.env.soilDryThreshold = 35;
-    gConfig.env.soilWetThreshold = 45;
+  if (server.hasArg("c1Dry")) {
+    int v = server.arg("c1Dry").toInt();
+    gConfig.chamber1.soilDryThreshold = constrain(v, 0, 100);
   }
+  if (server.hasArg("c1Wet")) {
+    int v = server.arg("c1Wet").toInt();
+    gConfig.chamber1.soilWetThreshold = constrain(v, 0, 100);
+  }
+  if (server.hasArg("c2Dry")) {
+    int v = server.arg("c2Dry").toInt();
+    gConfig.chamber2.soilDryThreshold = constrain(v, 0, 100);
+  }
+  if (server.hasArg("c2Wet")) {
+    int v = server.arg("c2Wet").toInt();
+    gConfig.chamber2.soilWetThreshold = constrain(v, 0, 100);
+  }
+  if (server.hasArg("c1Prof")) {
+    gConfig.chamber1.profileId = server.arg("c1Prof").toInt();
+  }
+  if (server.hasArg("c2Prof")) {
+    gConfig.chamber2.profileId = server.arg("c2Prof").toInt();
+  }
+
+  normalizeChamberConfig(gConfig.chamber1, DEFAULT_CHAMBER1_NAME);
+  normalizeChamberConfig(gConfig.chamber2, DEFAULT_CHAMBER2_NAME);
 
   if (server.hasArg("pumpOff")) {
     unsigned long v = server.arg("pumpOff").toInt();

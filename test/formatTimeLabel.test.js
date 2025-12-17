@@ -1,24 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { JSDOM } from 'jsdom';
-
-let appPromise;
-
-function setupDom(){
-  const dom = new JSDOM(`<!doctype html><body></body>`, { url: "http://localhost" });
-  global.window = dom.window;
-  global.document = dom.window.document;
-  global.requestAnimationFrame = cb => cb();
-}
-
-async function loadApp(){
-  if (!appPromise){
-    setupDom();
-    const appUrl = new URL('../data/app.js', import.meta.url).href;
-    appPromise = import(appUrl).then(() => window.__app);
-  }
-  return appPromise;
-}
+import { loadApp } from './helpers/appLoader.js';
 
 test('uses provided timezone when supported', async () => {
   const app = await loadApp();

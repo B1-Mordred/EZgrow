@@ -48,6 +48,7 @@ static const TzOption TZ_OPTIONS[] = {
 };
 static const size_t TZ_COUNT = sizeof(TZ_OPTIONS) / sizeof(TZ_OPTIONS[0]);
 
+
 // ================= GLOBALS =================
 
 GreenhouseConfig gConfig;
@@ -122,6 +123,41 @@ bool scheduleIsOn(int onMin, int offMin, int nowMin) {
     // crosses midnight: 20:00–06:00
     return (nowMin >= onMin || nowMin < offMin);
   }
+}
+
+bool normalizeChamberConfig(ChamberConfig &c, const char* defaultName) {
+  bool changed = false;
+
+  String originalName = c.name;
+  c.name.trim();
+  if (c.name != originalName) {
+    changed = true;
+  }
+  if (c.name.length() < 1 || c.name.length() > 24) {
+    c.name = defaultName;
+    changed = true;
+  }
+
+  int originalDry = c.soilDryThreshold;
+  int originalWet = c.soilWetThreshold;
+
+  c.soilDryThreshold = constrain(c.soilDryThreshold, 0, 100);
+  c.soilWetThreshold = constrain(c.soilWetThreshold, 0, 100);
+
+  if (c.soilWetThreshold <= c.soilDryThreshold) {
+    c.soilDryThreshold = DEFAULT_SOIL_DRY;
+    c.soilWetThreshold = DEFAULT_SOIL_WET;
+    changed = true;
+  } else if (originalDry != c.soilDryThreshold || originalWet != c.soilWetThreshold) {
+    changed = true;
+  }
+
+  if (c.profileId < -1) {
+    c.profileId = -1;
+    changed = true;
+  }
+
+  return changed;
 }
 
 bool greenhouseGetTime(struct tm &outTime, bool &available) {
@@ -243,8 +279,6 @@ void loadConfig() {
   gConfig.env.fanOffTemp       = 26.0f;
   gConfig.env.fanHumOn         = 80;      // 80 %RH ON
   gConfig.env.fanHumOff        = 70;      // 70 %RH OFF
-  gConfig.env.soilDryThreshold = 35;
-  gConfig.env.soilWetThreshold = 45;
   gConfig.env.pumpMinOffSec    = 5 * 60;  // 5 minutes
   gConfig.env.pumpMaxOnSec     = 30;      // 30 seconds
 
@@ -261,19 +295,31 @@ void loadConfig() {
 
   gConfig.tzIndex  = 0;
 
+  gConfig.chamber1.name              = DEFAULT_CHAMBER1_NAME;
+  gConfig.chamber1.soilDryThreshold  = DEFAULT_SOIL_DRY;
+  gConfig.chamber1.soilWetThreshold  = DEFAULT_SOIL_WET;
+  gConfig.chamber1.profileId         = -1;
+  gConfig.chamber2.name              = DEFAULT_CHAMBER2_NAME;
+  gConfig.chamber2.soilDryThreshold  = DEFAULT_SOIL_DRY;
+  gConfig.chamber2.soilWetThreshold  = DEFAULT_SOIL_WET;
+  gConfig.chamber2.profileId         = -1;
+
   if (!prefs.begin("gh_cfg", true)) {
     Serial.println("[CFG] Preferences begin failed; using defaults");
     return;
   }
 
+  bool migratedLegacySoil = false;
+
   gConfig.env.fanOnTemp        = prefs.getFloat("fanOn",    gConfig.env.fanOnTemp);
   gConfig.env.fanOffTemp       = prefs.getFloat("fanOff",   gConfig.env.fanOffTemp);
   gConfig.env.fanHumOn         = prefs.getInt  ("fanHumOn", gConfig.env.fanHumOn);
   gConfig.env.fanHumOff        = prefs.getInt  ("fanHumOff",gConfig.env.fanHumOff);
-  gConfig.env.soilDryThreshold = prefs.getInt  ("soilDry",  gConfig.env.soilDryThreshold);
-  gConfig.env.soilWetThreshold = prefs.getInt  ("soilWet",  gConfig.env.soilWetThreshold);
   gConfig.env.pumpMinOffSec    = prefs.getULong("pumpOff",  gConfig.env.pumpMinOffSec);
   gConfig.env.pumpMaxOnSec     = prefs.getULong("pumpOn",   gConfig.env.pumpMaxOnSec);
+
+  int legacySoilDry = prefs.getInt("soilDry", DEFAULT_SOIL_DRY);
+  int legacySoilWet = prefs.getInt("soilWet", DEFAULT_SOIL_WET);
 
   gConfig.light1.onMinutes  = prefs.getInt("l1OnMin",  gConfig.light1.onMinutes);
   gConfig.light1.offMinutes = prefs.getInt("l1OffMin", gConfig.light1.offMinutes);
@@ -288,7 +334,40 @@ void loadConfig() {
 
   gConfig.tzIndex  = prefs.getInt("tzIdx",   gConfig.tzIndex);
 
+  bool hasC1Name = prefs.isKey("c1Name");
+  bool hasC2Name = prefs.isKey("c2Name");
+  bool hasC1Dry  = prefs.isKey("c1Dry");
+  bool hasC2Dry  = prefs.isKey("c2Dry");
+  bool hasC1Wet  = prefs.isKey("c1Wet");
+  bool hasC2Wet  = prefs.isKey("c2Wet");
+  bool hasC1Prof = prefs.isKey("c1Prof");
+  bool hasC2Prof = prefs.isKey("c2Prof");
+
+  gConfig.chamber1.name             = prefs.getString("c1Name", gConfig.chamber1.name);
+  gConfig.chamber1.soilDryThreshold = prefs.getInt("c1Dry", gConfig.chamber1.soilDryThreshold);
+  gConfig.chamber1.soilWetThreshold = prefs.getInt("c1Wet", gConfig.chamber1.soilWetThreshold);
+  gConfig.chamber1.profileId        = prefs.getInt("c1Prof", gConfig.chamber1.profileId);
+
+  gConfig.chamber2.name             = prefs.getString("c2Name", gConfig.chamber2.name);
+  gConfig.chamber2.soilDryThreshold = prefs.getInt("c2Dry", gConfig.chamber2.soilDryThreshold);
+  gConfig.chamber2.soilWetThreshold = prefs.getInt("c2Wet", gConfig.chamber2.soilWetThreshold);
+  gConfig.chamber2.profileId        = prefs.getInt("c2Prof", gConfig.chamber2.profileId);
+
+  bool hasNewChamberKeys = hasC1Name || hasC2Name || hasC1Dry || hasC2Dry || hasC1Wet || hasC2Wet || hasC1Prof || hasC2Prof;
+
   prefs.end();
+
+  if (!hasNewChamberKeys) {
+    gConfig.chamber1.name             = DEFAULT_CHAMBER1_NAME;
+    gConfig.chamber2.name             = DEFAULT_CHAMBER2_NAME;
+    gConfig.chamber1.soilDryThreshold = legacySoilDry;
+    gConfig.chamber1.soilWetThreshold = legacySoilWet;
+    gConfig.chamber2.soilDryThreshold = legacySoilDry;
+    gConfig.chamber2.soilWetThreshold = legacySoilWet;
+    gConfig.chamber1.profileId        = -1;
+    gConfig.chamber2.profileId        = -1;
+    migratedLegacySoil = true;
+  }
 
   // Basic sanity checks
   if (gConfig.env.fanOffTemp >= gConfig.env.fanOnTemp) {
@@ -302,15 +381,12 @@ void loadConfig() {
     gConfig.env.fanHumOn  = 80;
     gConfig.env.fanHumOff = 70;
   }
-
-  gConfig.env.soilDryThreshold = constrain(gConfig.env.soilDryThreshold, 0, 100);
-  gConfig.env.soilWetThreshold = constrain(gConfig.env.soilWetThreshold, 0, 100);
-  if (gConfig.env.soilWetThreshold <= gConfig.env.soilDryThreshold) {
-    gConfig.env.soilDryThreshold = 35;
-    gConfig.env.soilWetThreshold = 45;
-  }
   if (gConfig.env.pumpMinOffSec < 10) gConfig.env.pumpMinOffSec = 5 * 60;
   if (gConfig.env.pumpMaxOnSec  < 5)  gConfig.env.pumpMaxOnSec  = 30;
+
+  bool chamberValidated = false;
+  chamberValidated |= normalizeChamberConfig(gConfig.chamber1, DEFAULT_CHAMBER1_NAME);
+  chamberValidated |= normalizeChamberConfig(gConfig.chamber2, DEFAULT_CHAMBER2_NAME);
 
   gConfig.light1.onMinutes  = constrain(gConfig.light1.onMinutes,  0, 24 * 60 - 1);
   gConfig.light1.offMinutes = constrain(gConfig.light1.offMinutes, 0, 24 * 60 - 1);
@@ -319,6 +395,10 @@ void loadConfig() {
 
   if (gConfig.tzIndex < 0 || (size_t)gConfig.tzIndex >= TZ_COUNT) {
     gConfig.tzIndex = 0;
+  }
+
+  if (migratedLegacySoil || chamberValidated) {
+    saveConfig();
   }
 }
 
@@ -332,10 +412,18 @@ void saveConfig() {
   prefs.putFloat("fanOff",   gConfig.env.fanOffTemp);
   prefs.putInt  ("fanHumOn", gConfig.env.fanHumOn);
   prefs.putInt  ("fanHumOff",gConfig.env.fanHumOff);
-  prefs.putInt  ("soilDry",  gConfig.env.soilDryThreshold);
-  prefs.putInt  ("soilWet",  gConfig.env.soilWetThreshold);
   prefs.putULong("pumpOff",  gConfig.env.pumpMinOffSec);
   prefs.putULong("pumpOn",   gConfig.env.pumpMaxOnSec);
+
+  prefs.putString("c1Name", gConfig.chamber1.name);
+  prefs.putInt   ("c1Dry",  gConfig.chamber1.soilDryThreshold);
+  prefs.putInt   ("c1Wet",  gConfig.chamber1.soilWetThreshold);
+  prefs.putInt   ("c1Prof", gConfig.chamber1.profileId);
+
+  prefs.putString("c2Name", gConfig.chamber2.name);
+  prefs.putInt   ("c2Dry",  gConfig.chamber2.soilDryThreshold);
+  prefs.putInt   ("c2Wet",  gConfig.chamber2.soilWetThreshold);
+  prefs.putInt   ("c2Prof", gConfig.chamber2.profileId);
 
   prefs.putInt ("l1OnMin", gConfig.light1.onMinutes);
   prefs.putInt ("l1OffMin",gConfig.light1.offMinutes);
@@ -387,8 +475,6 @@ static GrowProfileInfo profileInfoFromPreset(const GrowProfilePreset &p){
     p.fanOff,
     p.fanHumOn,
     p.fanHumOff,
-    p.soilDry,
-    p.soilWet,
     p.pumpMinOff,
     p.pumpMaxOn,
   };
@@ -396,6 +482,8 @@ static GrowProfileInfo profileInfoFromPreset(const GrowProfilePreset &p){
   info.light2 = { p.l2On, p.l2Off, p.lightsAuto };
   info.autoFan = p.autoFan;
   info.autoPump = p.autoPump;
+  info.chamber1 = { String(DEFAULT_CHAMBER1_NAME), p.soilDry, p.soilWet, -1 };
+  info.chamber2 = { String(DEFAULT_CHAMBER2_NAME), p.soilDry, p.soilWet, -1 };
   return info;
 }
 
@@ -414,8 +502,6 @@ bool applyGrowProfile(int profileId, String &appliedName) {
   gConfig.env.fanOffTemp       = p.fanOff;
   gConfig.env.fanHumOn         = p.fanHumOn;
   gConfig.env.fanHumOff        = p.fanHumOff;
-  gConfig.env.soilDryThreshold = p.soilDry;
-  gConfig.env.soilWetThreshold = p.soilWet;
   gConfig.env.pumpMinOffSec    = p.pumpMinOff;
   gConfig.env.pumpMaxOnSec     = p.pumpMaxOn;
 
@@ -429,6 +515,17 @@ bool applyGrowProfile(int profileId, String &appliedName) {
 
   gConfig.autoFan  = p.autoFan;
   gConfig.autoPump = p.autoPump;
+
+  gConfig.chamber1.soilDryThreshold = p.soilDry;
+  gConfig.chamber1.soilWetThreshold = p.soilWet;
+  gConfig.chamber2.soilDryThreshold = p.soilDry;
+  gConfig.chamber2.soilWetThreshold = p.soilWet;
+  int profileIdToStore = (profileId > 0) ? profileId : -1;
+  gConfig.chamber1.profileId = profileIdToStore;
+  gConfig.chamber2.profileId = profileIdToStore;
+
+  normalizeChamberConfig(gConfig.chamber1, DEFAULT_CHAMBER1_NAME);
+  normalizeChamberConfig(gConfig.chamber2, DEFAULT_CHAMBER2_NAME);
 
   appliedName = p.label;
   return true;
@@ -559,10 +656,10 @@ void updateControlLogic() {
 
   // Pump (auto by soil moisture + timing)
   if (gConfig.autoPump) {
-    bool tooDry    = (gSensors.soil1Percent < gConfig.env.soilDryThreshold) ||
-                     (gSensors.soil2Percent < gConfig.env.soilDryThreshold);
-    bool wetEnough = (gSensors.soil1Percent > gConfig.env.soilWetThreshold) &&
-                     (gSensors.soil2Percent > gConfig.env.soilWetThreshold);
+    bool tooDry    = (gSensors.soil1Percent < gConfig.chamber1.soilDryThreshold) ||
+                     (gSensors.soil2Percent < gConfig.chamber2.soilDryThreshold);
+    bool wetEnough = (gSensors.soil1Percent > gConfig.chamber1.soilWetThreshold) &&
+                     (gSensors.soil2Percent > gConfig.chamber2.soilWetThreshold);
 
     if (!pumpRunning) {
       if (tooDry && (nowMs - lastPumpStopMs > gConfig.env.pumpMinOffSec * 1000UL)) {

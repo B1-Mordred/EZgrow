@@ -2,6 +2,11 @@
 #include <Arduino.h>
 #include <time.h>
 
+constexpr const char* DEFAULT_CHAMBER1_NAME = "Chamber 1";
+constexpr const char* DEFAULT_CHAMBER2_NAME = "Chamber 2";
+constexpr int         DEFAULT_SOIL_DRY      = 35;
+constexpr int         DEFAULT_SOIL_WET      = 45;
+
 // ========== Configuration structures ==========
 
 struct LightSchedule {
@@ -16,10 +21,15 @@ struct EnvConfig {
   float         fanOffTemp;       // °C
   int           fanHumOn;         // %RH - fan ON humidity threshold
   int           fanHumOff;        // %RH - fan OFF humidity threshold
-  int           soilDryThreshold; // %
-  int           soilWetThreshold; // %
   unsigned long pumpMinOffSec;    // seconds
   unsigned long pumpMaxOnSec;     // seconds
+};
+
+struct ChamberConfig {
+  String name;
+  int    soilDryThreshold; // %
+  int    soilWetThreshold; // %
+  int    profileId;        // optional grow profile link (or -1)
 };
 
 struct GreenhouseConfig {
@@ -29,6 +39,8 @@ struct GreenhouseConfig {
   bool          autoFan;
   bool          autoPump;
   int           tzIndex; // selectable time zone index
+  ChamberConfig chamber1;
+  ChamberConfig chamber2;
 };
 
 struct GrowProfileInfo {
@@ -38,6 +50,8 @@ struct GrowProfileInfo {
   LightSchedule light2;
   bool autoFan;
   bool autoPump;
+  ChamberConfig chamber1;
+  ChamberConfig chamber2;
 };
 
 // ========== Runtime state structures ==========
@@ -121,6 +135,7 @@ String minutesToTimeStr(int minutes);
 
 // Check if, for a schedule, the light should be ON at nowMinutes
 bool scheduleIsOn(int onMin, int offMin, int nowMin);
+bool normalizeChamberConfig(ChamberConfig &c, const char* defaultName);
 
 // ========== Web UI authentication (Basic Auth in NVS) ==========
 

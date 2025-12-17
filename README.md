@@ -23,6 +23,7 @@ It displays status on a small **0.91" WE-DA-361 I²C OLED** and exposes a web UI
 - Live sparklines for sensors on the dashboard
 - Grow profile tab with preset previews, chamber-targeted apply (Ch1→Light1, Ch2→Light2), plus system tab showing current device time
 - Relay controls that disable while requests are processing, with toast feedback for mode/toggle actions
+- Per-chamber dashboard labeling for soil tiles and light controls, with `/api/status` exposing chamber metadata for UI and integrations
 - **Wi-Fi configuration** (scan SSIDs, select, store SSID/password in NVS)
 - **HTTP Basic Authentication** (credentials stored in NVS, configurable in UI)
 - **Captive portal** for Wi-Fi onboarding in AP mode (auto-redirects to `/wifi`)

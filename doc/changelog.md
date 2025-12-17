@@ -16,6 +16,7 @@
 - Improved accessibility and rendering resilience with focus-visible outlines, aria-pressed states on segmented controls, and sparkline rendering guards for tiny canvases.
 - Added change detection for relay mode toggles, returning a `changed` flag from `/api/mode` and only persisting configuration when updates are requested.
 - Guarded dashboard relay controls during `/api/mode` and `/api/toggle` calls, disabling the segmented buttons and toggles while requests are in-flight and surfacing toast feedback.
+- Extended `/api/status` with chamber metadata (names, soil readings, thresholds, light relay mapping) and wired the dashboard to use escaped chamber labels for soil tiles, control cards, and history datasets (with sane fallbacks).
 - Apply timezone configuration only when a new selection is provided, applying the change once after saving.
 - Standardized dashboard sparkline ranges with clamped values for temperature, humidity, and soil moisture to improve readability.
 - Documented configuration tabs (environment, lights, automation, grow profiles, system timezone, security) to match the current UI.

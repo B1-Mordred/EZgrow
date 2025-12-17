@@ -273,18 +273,20 @@ static void handleStatusApi() {
 
   json += "\"chambers\":[";
   auto chamberJson = [&](int idx, const ChamberConfig& cfg, int soilPercent, const char* lightId) {
-    const char* fallback = (idx == 1) ? DEFAULT_CHAMBER1_NAME : DEFAULT_CHAMBER2_NAME;
+    const int id = idx + 1;
+    const char* fallback = (idx == 0) ? DEFAULT_CHAMBER1_NAME : DEFAULT_CHAMBER2_NAME;
     const String name = cfg.name.length() ? cfg.name : String(fallback);
-    json += "{\"id\":" + String(idx);
+    json += "{\"id\":" + String(id);
+    json += ",\"idx\":" + String(idx);
     json += ",\"name\":\"" + jsonEscape(name) + "\"";
     json += ",\"soil\":" + String(soilPercent);
     json += ",\"soil_dry_threshold\":" + String(cfg.soilDryThreshold);
     json += ",\"soil_wet_threshold\":" + String(cfg.soilWetThreshold);
     json += ",\"light_relay_id\":\"" + jsonEscape(lightId) + "\"}";
   };
-  chamberJson(1, gConfig.chamber1, gSensors.soil1Percent, "light1");
+  chamberJson(0, gConfig.chamber1, gSensors.soil1Percent, "light1");
   json += ",";
-  chamberJson(2, gConfig.chamber2, gSensors.soil2Percent, "light2");
+  chamberJson(1, gConfig.chamber2, gSensors.soil2Percent, "light2");
   json += "],";
 
   auto sched = [](const LightConfig& lc)->String {
@@ -321,14 +323,62 @@ static void handleStatusApi() {
   server.send(200, "application/json", json);
 }
 
+static bool parseNumericString(const String& raw) {
+  if (raw.length() == 0) return false;
+  for (size_t i = 0; i < raw.length(); i++) {
+    if (!isdigit((unsigned char)raw[i])) return false;
+  }
+  return true;
+}
+
+static bool parseChamberValue(const String& raw, bool preferId, int &chamberIdx, int &chamberId) {
+  if (!parseNumericString(raw)) return false;
+  int val = raw.toInt();
+  if (preferId) {
+    if (val >= 1 && val <= 2) {
+      chamberIdx = val - 1;
+      chamberId = val;
+      return true;
+    }
+    return false;
+  }
+
+  if (val == 0 || val == 1) {
+    chamberIdx = val;
+    chamberId = val + 1;
+    return true;
+  }
+  if (val == 2) {
+    chamberIdx = 1;
+    chamberId = 2;
+    return true;
+  }
+  return false;
+}
+
+static bool resolveChamberParam(int &chamberIdx, int &chamberId) {
+  if (server.hasArg("chamber") && parseChamberValue(server.arg("chamber"), false, chamberIdx, chamberId)) {
+    return true;
+  }
+  if (server.hasArg("chamber_id") && parseChamberValue(server.arg("chamber_id"), true, chamberIdx, chamberId)) {
+    return true;
+  }
+  return false;
+}
+
 static void handleApplyProfileChamberApi() {
   if (!requireAuth()) return;
-  if (!server.hasArg("chamber") || !server.hasArg("profile")) {
+  if ((!server.hasArg("chamber") && !server.hasArg("chamber_id")) || !server.hasArg("profile")) {
     server.send(400, "application/json", "{\"ok\":false,\"error\":\"missing_args\"}");
     return;
   }
 
-  int chamberIdx = server.arg("chamber").toInt();
+  int chamberIdx = -1;
+  int chamberId  = -1;
+  if (!resolveChamberParam(chamberIdx, chamberId)) {
+    server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid_chamber\"}");
+    return;
+  }
   int profileId = server.arg("profile").toInt();
   String appliedName;
   if (!applyGrowProfileToChamber(chamberIdx, profileId, appliedName)) {
@@ -347,6 +397,7 @@ static void handleApplyProfileChamberApi() {
   json += "\"ok\":true,";
   json += "\"applied_profile\":\"" + jsonEscape(appliedName) + "\",";
   json += "\"chamber_idx\":" + String(chamberIdx) + ",";
+  json += "\"chamber_id\":" + String(chamberId) + ",";
   json += "\"chamber_name\":\"" + jsonEscape(chamberName) + "\",";
   json += "\"label\":\"" + jsonEscape(label) + "\"";
   json += "}";
@@ -855,13 +906,13 @@ static void handleConfigGet() {
   auto chamberProfileRow = [&](int idx, const ChamberConfig& cfg, int selectedId) {
     const char* fallback = (idx == 0) ? DEFAULT_CHAMBER1_NAME : DEFAULT_CHAMBER2_NAME;
     const String chamberName = cfg.name.length() ? cfg.name : String(fallback);
-    page += "<div class='field chamber-profile' data-chamber='" + String(idx) + "'>";
+    page += "<div class='field chamber-profile' data-chamber='" + String(idx) + "' data-chamber-id='" + String(idx + 1) + "'>";
     page += "<label>Preset for " + htmlEscape(chamberName) + "</label>";
     page += "<div class='row' style='gap:8px;flex-wrap:wrap'>";
     page += "<select id='prof-ch" + String(idx + 1) + "' name='growProfileCh" + String(idx + 1) + "'>";
     page += profileOptions(selectedId);
     page += "</select>";
-    page += "<button class='btn primary apply-profile' type='button' data-chamber='" + String(idx) + "'>";
+    page += "<button class='btn primary apply-profile' type='button' data-chamber='" + String(idx) + "' data-chamber-id='" + String(idx + 1) + "'>";
     page += "Apply to " + htmlEscape(chamberName);
     page += "</button></div>";
     page += "<div class='small'>Updates only this chamber's soil thresholds and linked light schedule/auto flag.</div></div>";

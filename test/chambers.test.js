@@ -115,3 +115,43 @@ test('config grow profile buttons call chamber endpoint and update banner', asyn
   assert.ok(calls.some(u => u.includes('/api/grow/apply?chamber=0&profile=2')));
   assert.equal(document.querySelector('#appliedProfileBanner').textContent, "Applied profile: Vegetative -> Herbs");
 });
+
+test('config grow profile apply supports chamber id aliases', async () => {
+  const calls = [];
+  const fetchMock = async url => {
+    const urlStr = (typeof url === 'string') ? url : (url && url.url ? url.url : String(url));
+    calls.push(urlStr);
+    if (urlStr.startsWith('/api/status')) {
+      return { ok:true, json: async () => ({ time:"12:00:00", time_synced:true, timezone:"UTC", timezone_iana:"Etc/UTC" }) };
+    }
+    if (urlStr.startsWith('/api/grow/apply')) {
+      return { ok:true, json: async () => ({
+        ok:true,
+        applied_profile:"Seedling",
+        chamber_name:"Chamber 2",
+        chamber_idx:1,
+        chamber_id:2,
+        label:"Seedling -> Chamber 2"
+      }) };
+    }
+    return { ok:true, json: async () => ({}) };
+  };
+
+  const dom = setupDom(
+    "<!doctype html><body data-page='config'>" +
+    "<div id='cfg-time'></div>" +
+    "<div id='appliedProfileBanner' data-label=''></div>" +
+    "<select id='prof-ch2'><option value='0'>Custom</option><option value='1' selected>Seedling</option></select>" +
+    "<button class='apply-profile' data-chamber='1' data-chamber-id='2' type='button'>Apply</button>" +
+    "</body>",
+    fetchMock
+  );
+
+  const { document } = dom.window;
+  await new Promise(res => setTimeout(res, 5));
+  document.querySelector('.apply-profile').click();
+  await new Promise(res => setTimeout(res, 15));
+
+  assert.ok(calls.some(u => u.includes('/api/grow/apply?chamber=2&profile=1')));
+  assert.equal(document.querySelector('#appliedProfileBanner').textContent, "Applied profile: Seedling -> Chamber 2");
+});

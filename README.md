@@ -181,7 +181,7 @@ The device supports:
 
 - **Pump control** (automatic):
   - Soil moisture-based control using 2 sensors and configurable:
-    - Per-chamber configs (`ChamberConfig`): name, dry/wet thresholds, and optional profile IDs.
+    - Per-chamber configs (`ChamberConfig`): name (1–24 chars, HTML stripped), dry/wet thresholds, and optional profile IDs.
     - Minimum OFF time (`pumpMinOffSec`).
     - Maximum ON time (`pumpMaxOnSec`).
   - When the pump starts, it records which chambers were below their dry thresholds and only requires those chambers to reach their wet thresholds before shutting off (or when `pumpMaxOnSec` elapses), respecting the minimum OFF interval between cycles.
@@ -230,11 +230,16 @@ The device supports:
   - Environment thresholds:
     - Fan ON/OFF temperature.
     - Fan ON/OFF humidity.
-    - Soil DRY/WET thresholds.
+    - Chamber names (1–24 characters; HTML is stripped on save).
+    - Per-chamber soil DRY/WET thresholds (Ch1 uses soil sensor 1, Ch2 uses soil sensor 2; pump is shared across both chambers).
     - Pump minimum OFF time.
     - Pump maximum ON time.
   - Light 1/2 schedules (ON/OFF time + “use schedule” flags).
   - AUTO/MANUAL for fan and pump.
+  - Grow profiles:
+    - Per-chamber preset selectors with dedicated “Apply” buttons that call the chamber-specific apply endpoint to update soil thresholds and light schedules.
+    - A combined preset selector with “Apply to both + env” to update both chambers plus environment thresholds and automation defaults.
+    - Applied profile banner updates when presets are applied (per-chamber or both).
   - **Web UI authentication section**:
     - Username:
       - If empty, **HTTP authentication is disabled**.
@@ -458,6 +463,9 @@ On submit:
   - For lights: toggles use of schedule (AUTO) vs manual relay control.
   - For fan/pump: toggles automatic control logic vs manual relay control.  
   Protected by Basic Auth in STA mode.
+- `GET /api/grow/apply?chamber=0|1&profile=0-3`  
+  Applies a grow profile to a single chamber (soil thresholds + linked light schedule/auto) and returns a JSON payload with the applied label and chamber metadata.  
+  Protected by Basic Auth in STA mode.
 
 ### 4.5 History API (`/api/history`)
 
@@ -488,7 +496,7 @@ If `autoPump` is enabled:
 
 - “Too dry” if soil sensor 1 `< chamber1.soilDryThreshold` **or** soil sensor 2 `< chamber2.soilDryThreshold`.
 - “Wet enough” if soil sensor 1 `> chamber1.soilWetThreshold` **and** soil sensor 2 `> chamber2.soilWetThreshold`.
-- Chamber names (max 24 chars) and optional profile IDs are stored per chamber; thresholds are clamped to 0–100 with wet > dry enforced.
+- Chamber names (max 24 chars, HTML stripped) and optional profile IDs are stored per chamber; thresholds are clamped to 0–100 with wet > dry enforced.
 - Pump turns **ON** when:
   - Not currently running, AND
   - “Too dry”, AND

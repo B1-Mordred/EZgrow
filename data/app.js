@@ -78,6 +78,15 @@
     if (el) el.textContent = v;
   }
 
+  function deriveChamberLabels(chambers){
+    const list = Array.isArray(chambers) ? chambers : [];
+    return [1, 2].map(idx => {
+      const entry = list.find(c => Number(c?.id) === idx);
+      const name = (entry && typeof entry.name === "string") ? entry.name.trim() : "";
+      return name || `Chamber ${idx}`;
+    });
+  }
+
   const sparkData = {
     temp: [],
     hum: [],
@@ -186,6 +195,7 @@
     const staleAfterMs = 10000;
     let lastOkTs = Date.now();
     let consecutiveErrors = 0;
+    let chamberLabels = ["Chamber 1", "Chamber 2"];
 
     function setStaleState(on){
       document.body.classList.toggle("stale", !!on);
@@ -199,6 +209,7 @@
       consecutiveErrors = 0;
       setStaleState(false);
       statusTimezone = s.timezone || "";
+      chamberLabels = deriveChamberLabels(s.chambers);
 
       const tzLabel = s.timezone ? ` (${s.timezone})` : "";
       setText("#top-time", s.time_synced ? `${s.time}${tzLabel}` : "syncing…");
@@ -209,12 +220,17 @@
         setText("#top-conn", s.wifi?.mode === "AP" ? "AP mode" : "not connected");
       }
 
+      setText("#lbl-s1", chamberLabels[0]);
+      setText("#lbl-s2", chamberLabels[1]);
+
       const temp = (s.sensors?.temp_c == null) ? "N/A" : s.sensors.temp_c.toFixed(1);
       const hum  = (s.sensors?.hum_rh == null) ? "N/A" : Math.round(s.sensors.hum_rh).toString();
       setText("#v-temp", temp);
       setText("#v-hum", hum);
       setText("#v-s1",  (s.sensors?.soil1 ?? 0).toString());
       setText("#v-s2",  (s.sensors?.soil2 ?? 0).toString());
+      setText("#ctl-light1-name", chamberLabels[0]);
+      setText("#ctl-light2-name", chamberLabels[1]);
 
       pushSpark("temp", sparkData.temp,  s.sensors?.temp_c);
       pushSpark("hum",  sparkData.hum,   s.sensors?.hum_rh);
@@ -340,8 +356,8 @@
       new Chart(c2.getContext("2d"), {
         type:"line",
         data:{ labels, datasets:[
-          { label:"Light 1", data:l1, stepped:true, borderColor:accent, backgroundColor:"rgba(18,161,80,0.10)" },
-          { label:"Light 2", data:l2, stepped:true, borderColor:muted,  backgroundColor:"rgba(107,124,133,0.10)" }
+          { label:(chamberLabels[0] || "Chamber 1"), data:l1, stepped:true, borderColor:accent, backgroundColor:"rgba(18,161,80,0.10)" },
+          { label:(chamberLabels[1] || "Chamber 2"), data:l2, stepped:true, borderColor:muted,  backgroundColor:"rgba(107,124,133,0.10)" }
         ]},
         options:{
           responsive:true,
@@ -419,6 +435,6 @@
   });
 
   if (typeof window !== "undefined"){
-    window.__app = Object.assign({}, window.__app, { withRelayGuard, formatTimeLabel, pushSpark });
+    window.__app = Object.assign({}, window.__app, { withRelayGuard, formatTimeLabel, pushSpark, deriveChamberLabels });
   }
 })();

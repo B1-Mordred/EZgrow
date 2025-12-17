@@ -241,7 +241,7 @@ static void handleStatusApi() {
   String modeStr = connected ? "STA" : ((WiFi.getMode() & WIFI_MODE_AP) ? "AP" : "NONE");
 
   String json;
-  json.reserve(900);
+  json.reserve(1100);
 
   json += "{";
   json += "\"time\":\"" + jsonEscape(timeStr) + "\",";
@@ -269,6 +269,22 @@ static void handleStatusApi() {
   json += ",\"soil1\":" + String(gSensors.soil1Percent);
   json += ",\"soil2\":" + String(gSensors.soil2Percent);
   json += "},";
+
+  json += "\"chambers\":[";
+  auto chamberJson = [&](int idx, const ChamberConfig& cfg, int soilPercent, const char* lightId) {
+    const char* fallback = (idx == 1) ? DEFAULT_CHAMBER1_NAME : DEFAULT_CHAMBER2_NAME;
+    const String name = cfg.name.length() ? cfg.name : String(fallback);
+    json += "{\"id\":" + String(idx);
+    json += ",\"name\":\"" + jsonEscape(name) + "\"";
+    json += ",\"soil\":" + String(soilPercent);
+    json += ",\"soil_dry_threshold\":" + String(cfg.soilDryThreshold);
+    json += ",\"soil_wet_threshold\":" + String(cfg.soilWetThreshold);
+    json += ",\"light_relay_id\":\"" + jsonEscape(lightId) + "\"}";
+  };
+  chamberJson(1, gConfig.chamber1, gSensors.soil1Percent, "light1");
+  json += ",";
+  chamberJson(2, gConfig.chamber2, gSensors.soil2Percent, "light2");
+  json += "],";
 
   auto sched = [](const LightConfig& lc)->String {
     return minutesToTimeStrSafe(lc.onMinutes) + "–" + minutesToTimeStrSafe(lc.offMinutes);
@@ -518,11 +534,11 @@ static void handleRoot() {
           "<div class='tile-value'><span id='v-hum'>—</span><span class='tile-unit'>%</span></div>"
           "<div class='tile-label'>Air</div><canvas class='sparkline' id='spark-hum' height='38'></canvas></div>";
 
-  page += "<div class='tile'><div class='tile-label'>Soil 1</div>"
+  page += "<div class='tile'><div class='tile-label'>Soil · <span id='lbl-s1'>" + htmlEscape(gConfig.chamber1.name) + "</span></div>"
           "<div class='tile-value'><span id='v-s1'>—</span><span class='tile-unit'>%</span></div>"
           "<div class='tile-label'>Moisture</div><canvas class='sparkline' id='spark-s1' height='38'></canvas></div>";
 
-  page += "<div class='tile'><div class='tile-label'>Soil 2</div>"
+  page += "<div class='tile'><div class='tile-label'>Soil · <span id='lbl-s2'>" + htmlEscape(gConfig.chamber2.name) + "</span></div>"
           "<div class='tile-value'><span id='v-s2'>—</span><span class='tile-unit'>%</span></div>"
           "<div class='tile-label'>Moisture</div><canvas class='sparkline' id='spark-s2' height='38'></canvas></div>";
   page += "</div>";
@@ -531,10 +547,18 @@ static void handleRoot() {
   page += "<h2>Controls</h2>";
   page += "<div class='controls'>";
 
-  auto control = [&](const char* id, const char* label, bool isAuto, bool isOn, const String& schedule) {
+  auto control = [&](const char* id, const char* label, const String& chamberName, bool isAuto, bool isOn, const String& schedule) {
     page += "<div class='card' style='box-shadow:none'>";
     page += "<div class='control-head'>";
-    page += "<div><div class='control-title'>" + String(label) + "</div>";
+    page += "<div><div class='control-title'>" + String(label);
+    if (chamberName.length()) {
+      page += " · <span id='ctl-";
+      page += id;
+      page += "-name'>";
+      page += htmlEscape(chamberName);
+      page += "</span>";
+    }
+    page += "</div>";
     page += "<div class='sub'>Mode <span class='badge ";
     page += (isAuto ? "auto" : "man");
     page += "' id='m-"; page += id; page += "'>";
@@ -571,12 +595,12 @@ static void handleRoot() {
     page += "</div></div>";
   };
 
-  control("light1", "Light 1", gConfig.light1.enabled, gRelays.light1,
+  control("light1", "Light 1", gConfig.chamber1.name, gConfig.light1.enabled, gRelays.light1,
           minutesToTimeStrSafe(gConfig.light1.onMinutes) + "–" + minutesToTimeStrSafe(gConfig.light1.offMinutes));
-  control("light2", "Light 2", gConfig.light2.enabled, gRelays.light2,
+  control("light2", "Light 2", gConfig.chamber2.name, gConfig.light2.enabled, gRelays.light2,
           minutesToTimeStrSafe(gConfig.light2.onMinutes) + "–" + minutesToTimeStrSafe(gConfig.light2.offMinutes));
-  control("fan", "Fan", gConfig.autoFan, gRelays.fan, "threshold-based");
-  control("pump", "Pump", gConfig.autoPump, gRelays.pump, "soil-based");
+  control("fan", "Fan", "", gConfig.autoFan, gRelays.fan, "threshold-based");
+  control("pump", "Pump", "", gConfig.autoPump, gRelays.pump, "soil-based");
 
   page += "</div>"; // controls
 

@@ -20,6 +20,7 @@
 - Extended `/api/status` with chamber metadata (names, soil readings, thresholds, light relay mapping) and wired the dashboard to use escaped chamber labels for soil tiles, control cards, and history datasets (with sane fallbacks).
 - Apply timezone configuration only when a new selection is provided, applying the change once after saving.
 - Standardized dashboard sparkline ranges with clamped values for temperature, humidity, and soil moisture to improve readability.
+- Prevented long chamber names from breaking tile or control headers by clamping labels with ellipsis-aware overflow handling for desktop and mobile layouts.
 - Documented configuration tabs (environment, lights, automation, grow profiles, system timezone, security) to match the current UI.
 - Added chamber-targeted grow profile application (Ch1→Light1, Ch2→Light2) that updates only soil thresholds and linked light schedules, plus updated previews and UI actions to persist the change.
 - Pump automation now tracks which chambers were dry at start, watering them until their individual wet thresholds are reached (or max-on expires) while preserving minimum-off timing.

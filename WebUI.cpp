@@ -155,13 +155,15 @@ static void beginPage(String& page, const char* title, const char* activeNav, bo
     page += "<a href='/config'";
     if (String(activeNav) == "config") page += " class='active'";
     page += ">Config</a>";
-  }
 
-  page += "<a href='/wifi'";
-  if (String(activeNav) == "wifi") page += " class='active'";
-  page += ">";
-  page += sCaptivePortalActive ? "Wi-Fi Setup" : "Wi-Fi";
-  page += "</a>";
+    page += "<a href='/wifi'";
+    if (String(activeNav) == "wifi") page += " class='active'";
+    page += ">Wi-Fi</a>";
+  } else {
+    page += "<a href='/wifi'";
+    if (String(activeNav) == "wifi") page += " class='active'";
+    page += ">Wi-Fi Setup</a>";
+  }
   page += "</div>";
 
   page += "<div class='pills'>";
@@ -504,19 +506,7 @@ static void handleApiMode() {
 
 // ================= Wi-Fi configuration page =================
 
-static void handleWifiConfigGet() {
-  if (!requireAuth()) return;
-
-  String storedSsid, storedPass;
-  loadWifiCredentials(storedSsid, storedPass);
-
-  int n = WiFi.scanNetworks();
-
-  String page;
-  page.reserve(12000);
-
-  beginPage(page, "Wi-Fi", "wifi", false);
-
+static void appendWifiConfigSection(String& page, const String& storedSsid, const String& storedPass, int networkCount) {
   page += "<div class='card'><h2>Current connection</h2>";
   wl_status_t st = WiFi.status();
   if (st == WL_CONNECTED) {
@@ -547,12 +537,12 @@ static void handleWifiConfigGet() {
   page += "<input id='ssidFilter' placeholder='Filter SSIDs…' style='max-width:280px'>";
   page += "</div>";
 
-  if (n <= 0) {
+  if (networkCount <= 0) {
     page += "<p class='small'>No networks found.</p>";
   } else {
     page += "<table class='table' style='margin-top:12px'>";
     page += "<tr><th>SSID</th><th>RSSI</th><th>Encryption</th></tr>";
-    for (int i = 0; i < n; ++i) {
+    for (int i = 0; i < networkCount; ++i) {
       String ssid = WiFi.SSID(i);
       int32_t rssi = WiFi.RSSI(i);
       wifi_auth_mode_t enc = WiFi.encryptionType(i);
@@ -570,6 +560,21 @@ static void handleWifiConfigGet() {
     page += "</table>";
   }
   page += "</div>";
+}
+
+static void handleWifiConfigGet() {
+  if (!requireAuth()) return;
+
+  String storedSsid, storedPass;
+  loadWifiCredentials(storedSsid, storedPass);
+
+  int n = WiFi.scanNetworks();
+
+  String page;
+  page.reserve(12000);
+
+  beginPage(page, "Wi-Fi", "wifi", false);
+  appendWifiConfigSection(page, storedSsid, storedPass, n);
 
   endPage(page);
 
@@ -796,6 +801,10 @@ static void handleMode() {
 static void handleConfigGet() {
   if (!requireAuth()) return;
 
+  String storedSsid, storedPass;
+  loadWifiCredentials(storedSsid, storedPass);
+  int wifiNetworks = WiFi.scanNetworks();
+
   String page;
   page.reserve(12000);
 
@@ -818,6 +827,7 @@ static void handleConfigGet() {
   page += "<button class='tab' type='button' data-tab='lights'>Lights</button>";
   page += "<button class='tab' type='button' data-tab='auto'>Automation</button>";
   page += "<button class='tab' type='button' data-tab='grow'>Grow profile</button>";
+  page += "<button class='tab' type='button' data-tab='wifi'>Wi-Fi</button>";
   page += "<button class='tab' type='button' data-tab='system'>System</button>";
   page += "<button class='tab' type='button' data-tab='security'>Security</button>";
   page += "</div>";
@@ -1036,11 +1046,17 @@ static void handleConfigGet() {
   page += "</div>";
 
   page += "</form>";
+
+  // WIFI
+  page += "<div class='tab-panel' data-tab='wifi'>";
+  appendWifiConfigSection(page, storedSsid, storedPass, wifiNetworks);
+  page += "</div>";
   page += "</div>"; // panels
   page += "</div>"; // card
 
   endPage(page);
   server.send(200, "text/html", page);
+  WiFi.scanDelete();
 }
 
 static void handleConfigPost() {

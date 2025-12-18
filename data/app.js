@@ -485,9 +485,8 @@
     async function initCharts(){
       if (chartsInit) return;
       const c1 = $("#tempHumChart");
-      const c2 = $("#lightChart");
-      const c3 = $("#soilChart");
-      if (!c1 || !c2 || !window.Chart) return;
+      const c2 = $("#soilChart");
+      if (!c1 || !window.Chart) return;
 
       const d = await apiGet(`/api/history?ts=${Date.now()}`);
       const pts = d.points || [];
@@ -497,8 +496,6 @@
       const labels = history.labels;
       const temps  = history.temps;
       const hums   = history.hums;
-      const l1     = history.light1;
-      const l2     = history.light2;
       const s1     = history.soil1;
       const s2     = history.soil2;
 
@@ -518,8 +515,8 @@
         }
       });
 
-      if (c3){
-        new Chart(c3.getContext("2d"), {
+      if (c2){
+        new Chart(c2.getContext("2d"), {
           type:"line",
           data:{ labels, datasets:[
             { label:`${history.chamberLabels[0]} soil`, data:s1, borderColor:accent, backgroundColor:"rgba(18,161,80,0.10)", tension:0.2, spanGaps:true },
@@ -535,22 +532,6 @@
           }
         });
       }
-
-      new Chart(c2.getContext("2d"), {
-        type:"line",
-        data:{ labels, datasets:[
-          { label:(chamberLabels[0] || "Chamber 1"), data:l1, stepped:true, borderColor:accent, backgroundColor:"rgba(18,161,80,0.10)" },
-          { label:(chamberLabels[1] || "Chamber 2"), data:l2, stepped:true, borderColor:muted,  backgroundColor:"rgba(107,124,133,0.10)" }
-        ]},
-        options:{
-          responsive:true,
-          interaction:{ mode:"index", intersect:false },
-          scales:{
-            y:{ min:-0.1, max:1.1, ticks:{ stepSize:1 }, title:{ display:true, text:"Light state (0/1)" } },
-            x:{ ticks:{ maxTicksLimit:12 } }
-          }
-        }
-      });
 
       chartsInit = true;
     }

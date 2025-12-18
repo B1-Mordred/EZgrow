@@ -727,7 +727,7 @@ static void handleRoot() {
   page += "<div class='sub'>Temperature/humidity, soil moisture, and light states (logged every minute).</div>";
   page += "<div style='margin-top:12px'><canvas id='tempHumChart' height='150'></canvas></div>";
   page += "<div style='margin-top:14px'><canvas id='soilChart' height='120'></canvas></div>";
-  page += "<div style='margin-top:14px'><canvas id='lightChart' height='120'></canvas></div>";
+  page += "<!-- Light history chart removed -->";
   page += "</div>";
 
   endPage(page);

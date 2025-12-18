@@ -484,22 +484,19 @@
     let chartsInit = false;
     async function initCharts(){
       if (chartsInit) return;
-      const c1 = $("#tempHumChart");
-      const c2 = $("#soilChart");
-      if (!c1 || !window.Chart) return;
+      const tempHumCanvas = $("#tempHumChart");
+      if (!tempHumCanvas || !window.Chart) return;
+
+      const soilCanvas = $("#soilChart");
 
       const d = await apiGet(`/api/history?ts=${Date.now()}`);
       const pts = d.points || [];
       if (!pts.length) return;
 
-      const history = prepareHistoryDatasets(pts, statusTimezone, chamberLabels);
-      const labels = history.labels;
-      const temps  = history.temps;
-      const hums   = history.hums;
-      const s1     = history.soil1;
-      const s2     = history.soil2;
+      const { labels, temps, hums, soil1, soil2, chamberLabels: soilLabels } =
+        prepareHistoryDatasets(pts, statusTimezone, chamberLabels);
 
-      new Chart(c1.getContext("2d"), {
+      new Chart(tempHumCanvas.getContext("2d"), {
         type:"line",
         data:{ labels, datasets:[
           { label:"Temperature (°C)", data:temps, borderColor:accent, backgroundColor:"rgba(18,161,80,0.10)", tension:0.2, yAxisID:"y" },
@@ -515,12 +512,12 @@
         }
       });
 
-      if (c2){
-        new Chart(c2.getContext("2d"), {
+      if (soilCanvas){
+        new Chart(soilCanvas.getContext("2d"), {
           type:"line",
           data:{ labels, datasets:[
-            { label:`${history.chamberLabels[0]} soil`, data:s1, borderColor:accent, backgroundColor:"rgba(18,161,80,0.10)", tension:0.2, spanGaps:true },
-            { label:`${history.chamberLabels[1]} soil`, data:s2, borderColor:muted,  backgroundColor:"rgba(107,124,133,0.10)", tension:0.2, spanGaps:true },
+            { label:`${soilLabels[0]} soil`, data:soil1, borderColor:accent, backgroundColor:"rgba(18,161,80,0.10)", tension:0.2, spanGaps:true },
+            { label:`${soilLabels[1]} soil`, data:soil2, borderColor:muted,  backgroundColor:"rgba(107,124,133,0.10)", tension:0.2, spanGaps:true },
           ]},
           options:{
             responsive:true,

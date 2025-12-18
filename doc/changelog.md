@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Switched history logging to 10-minute samples with 7-day retention, averaging all readings per window, added 1–7 day range selection (with persistence) to `/api/history` and the dashboard charts, and based automation thresholds on 1-minute averaged sensor data.
 - Added a System-tab reboot control that posts to `/api/reboot`, audits the requester, responds before restarting, and surfaces confirmation/toast feedback in the UI.
 - Added timezone-aware on/off countdowns for light schedules on the dashboard, grow profile previews, and preset tables using device time (including schedules that cross midnight).
 - Refined Config UI information architecture with Environment, Lights, Water & Air, Grow profile, Wi‑Fi, System, and Security tabs, compact preset cards, active profile indicators, and automation pills showing AUTO/MAN modes.

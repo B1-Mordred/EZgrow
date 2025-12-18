@@ -167,6 +167,44 @@
     return scales;
   }
 
+  const HISTORY_RANGE_KEY       = "historyRangeDays";
+  const HISTORY_MIN_DAYS        = 1;
+  const HISTORY_MAX_DAYS        = 7;
+  const HISTORY_INTERVAL_MINUTES = 10;
+  const HISTORY_SAMPLES_PER_DAY = Math.max(1, Math.round((24 * 60) / HISTORY_INTERVAL_MINUTES));
+
+  const clampHistoryDays = (v) => {
+    const num = Number(v);
+    if (!Number.isFinite(num)) return HISTORY_MIN_DAYS;
+    return Math.min(HISTORY_MAX_DAYS, Math.max(HISTORY_MIN_DAYS, Math.round(num)));
+  };
+
+  function filterHistoryPoints(points, days = HISTORY_MIN_DAYS){
+    const pts = Array.isArray(points) ? points : [];
+    if (!pts.length) return [];
+
+    const rangeDays = clampHistoryDays(days);
+    const maxSamples = HISTORY_SAMPLES_PER_DAY * rangeDays;
+
+    let newestTs = 0;
+    pts.forEach(p => {
+      const ts = Number(p?.t);
+      if (Number.isFinite(ts) && ts > newestTs) newestTs = ts;
+    });
+
+    if (newestTs > 0){
+      const cutoff = newestTs - (rangeDays * 24 * 60 * 60);
+      const filtered = pts.filter((p, idx) => {
+        const ts = Number(p?.t);
+        if (Number.isFinite(ts) && ts > 0) return ts >= cutoff;
+        return (pts.length - idx) <= maxSamples;
+      });
+      return filtered.length > maxSamples ? filtered.slice(filtered.length - maxSamples) : filtered;
+    }
+
+    return pts.slice(-maxSamples);
+  }
+
   const datasetInt = (el, key) => {
     if (!el || !el.dataset || !(key in el.dataset)) return null;
     const v = Number.parseInt(el.dataset[key], 10);
@@ -729,57 +767,106 @@
       }
     });
 
-    // History charts (once)
+    const historyRangeSelect = $("#historyRange");
+    let historyRangeDays = clampHistoryDays(localStorage.getItem(HISTORY_RANGE_KEY));
+    const syncHistoryRangeSelect = () => {
+      if (historyRangeSelect){
+        historyRangeSelect.value = String(historyRangeDays);
+      }
+    };
+    syncHistoryRangeSelect();
+    if (historyRangeSelect){
+      historyRangeSelect.addEventListener("change", () => {
+        const chosen = clampHistoryDays(historyRangeSelect.value);
+        historyRangeDays = chosen;
+        localStorage.setItem(HISTORY_RANGE_KEY, String(chosen));
+        initCharts({ force:true });
+      });
+    }
+
+    // History charts (with selectable range)
     let chartsInit = false;
-    async function initCharts(){
-      if (chartsInit) return;
+    let chartsLoading = false;
+    let lastHistoryFetch = 0;
+    let tempHumChart = null;
+    let soilChart = null;
+    const historyRefreshMs = 60 * 1000;
+
+    async function initCharts(opts={}){
+      if (chartsLoading) return;
+      const force = opts.force === true;
       const tempHumCanvas = $("#tempHumChart");
       if (!tempHumCanvas || !window.Chart) return;
 
+      const now = Date.now();
+      if (chartsInit && !force && (now - lastHistoryFetch) < historyRefreshMs) return;
+
       const soilCanvas = $("#soilChart");
+      chartsLoading = true;
+      try{
+        const d = await apiGet(`/api/history?days=${historyRangeDays}&ts=${now}`);
+        lastHistoryFetch = now;
+        const pts = filterHistoryPoints(d.points || [], historyRangeDays);
+        if (!pts.length) return;
 
-      const d = await apiGet(`/api/history?ts=${Date.now()}`);
-      const pts = d.points || [];
-      if (!pts.length) return;
+        const { labels, temps, hums, soil1, soil2, chamberLabels: soilLabels } =
+          prepareHistoryDatasets(pts, statusTimezone, chamberLabels);
 
-      const { labels, temps, hums, soil1, soil2, chamberLabels: soilLabels } =
-        prepareHistoryDatasets(pts, statusTimezone, chamberLabels);
-
-      new Chart(tempHumCanvas.getContext("2d"), {
-        type:"line",
-        data:{ labels, datasets:[
-          { label:"Temperature (°C)", data:temps, borderColor:accent, backgroundColor:"rgba(18,161,80,0.10)", tension:0.2, yAxisID:"y" },
-          { label:"Humidity (%)",     data:hums,  borderColor:muted,  backgroundColor:"rgba(107,124,133,0.10)", tension:0.2, yAxisID:"y1" }
-        ]},
-        options:{
-          responsive:true,
-          interaction:{ mode:"index", intersect:false },
-          scales:{
-            y:{ position:"left",  title:{ display:true, text:"Temperature (°C)" }, min: chartScales.tempMin, max: chartScales.tempMax },
-            y1:{ position:"right", title:{ display:true, text:"Humidity (%)" }, grid:{ drawOnChartArea:false }, min: chartScales.humMin, max: chartScales.humMax }
-          }
-        }
-      });
-
-      if (soilCanvas){
-        new Chart(soilCanvas.getContext("2d"), {
-          type:"line",
-          data:{ labels, datasets:[
-            { label:`${soilLabels[0]} soil`, data:soil1, borderColor:accent, backgroundColor:"rgba(18,161,80,0.10)", tension:0.2, spanGaps:true },
-            { label:`${soilLabels[1]} soil`, data:soil2, borderColor:muted,  backgroundColor:"rgba(107,124,133,0.10)", tension:0.2, spanGaps:true },
-          ]},
-          options:{
-            responsive:true,
-            interaction:{ mode:"index", intersect:false },
-            scales:{
-              y:{ min:0, max:100, title:{ display:true, text:"Soil moisture (%)" } },
-              x:{ ticks:{ maxTicksLimit:12 } }
+        if (!chartsInit){
+          tempHumChart = new Chart(tempHumCanvas.getContext("2d"), {
+            type:"line",
+            data:{ labels, datasets:[
+              { label:"Temperature (°C)", data:temps, borderColor:accent, backgroundColor:"rgba(18,161,80,0.10)", tension:0.2, yAxisID:"y" },
+              { label:"Humidity (%)",     data:hums,  borderColor:muted,  backgroundColor:"rgba(107,124,133,0.10)", tension:0.2, yAxisID:"y1" }
+            ]},
+            options:{
+              responsive:true,
+              interaction:{ mode:"index", intersect:false },
+              scales:{
+                y:{ position:"left",  title:{ display:true, text:"Temperature (°C)" }, min: chartScales.tempMin, max: chartScales.tempMax },
+                y1:{ position:"right", title:{ display:true, text:"Humidity (%)" }, grid:{ drawOnChartArea:false }, min: chartScales.humMin, max: chartScales.humMax }
+              }
             }
-          }
-        });
-      }
+          });
 
-      chartsInit = true;
+          if (soilCanvas){
+            soilChart = new Chart(soilCanvas.getContext("2d"), {
+              type:"line",
+              data:{ labels, datasets:[
+                { label:`${soilLabels[0]} soil`, data:soil1, borderColor:accent, backgroundColor:"rgba(18,161,80,0.10)", tension:0.2, spanGaps:true },
+                { label:`${soilLabels[1]} soil`, data:soil2, borderColor:muted,  backgroundColor:"rgba(107,124,133,0.10)", tension:0.2, spanGaps:true },
+              ]},
+              options:{
+                responsive:true,
+                interaction:{ mode:"index", intersect:false },
+                scales:{
+                  y:{ min:0, max:100, title:{ display:true, text:"Soil moisture (%)" } },
+                  x:{ ticks:{ maxTicksLimit:12 } }
+                }
+              }
+            });
+          }
+
+          chartsInit = true;
+          return;
+        }
+
+        if (tempHumChart){
+          tempHumChart.data.labels = labels;
+          tempHumChart.data.datasets[0].data = temps;
+          tempHumChart.data.datasets[1].data = hums;
+          if (typeof tempHumChart.update === "function") tempHumChart.update();
+        }
+
+        if (soilChart){
+          soilChart.data.labels = labels;
+          soilChart.data.datasets[0].data = soil1;
+          soilChart.data.datasets[1].data = soil2;
+          if (typeof soilChart.update === "function") soilChart.update();
+        }
+      }finally{
+        chartsLoading = false;
+      }
     }
 
     const poll = async () => {
@@ -996,6 +1083,7 @@
       updateDeviceClockFromStatus,
       buildChamberConfirmMessage,
       prepareHistoryDatasets,
+      filterHistoryPoints,
       resolveChartScales,
       defaultChartScales,
     });

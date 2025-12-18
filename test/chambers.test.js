@@ -16,6 +16,7 @@ function setupDom(html = "<!doctype html><body data-page=''></body>", fetchImpl)
   globalThis.window = window;
   globalThis.document = window.document;
   globalThis.requestAnimationFrame = window.requestAnimationFrame;
+  globalThis.localStorage = window.localStorage;
   globalThis.fetch = window.fetch;
   globalThis.confirm = window.confirm;
   globalThis.getComputedStyle = window.getComputedStyle;

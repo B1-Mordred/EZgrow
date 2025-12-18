@@ -92,8 +92,8 @@ struct HistorySample {
 };
 
 // History configuration
-constexpr size_t        HISTORY_SIZE        = 1440;          // 1 day @ 1-min interval
-constexpr unsigned long HISTORY_INTERVAL_MS = 60UL * 1000UL; // 1 minute
+constexpr size_t        HISTORY_SIZE        = 1008;             // 7 days @ 10-min interval
+constexpr unsigned long HISTORY_INTERVAL_MS = 10UL * 60UL * 1000UL; // 10 minutes
 
 // ========== Global config/state (defined in Greenhouse.cpp) ==========
 

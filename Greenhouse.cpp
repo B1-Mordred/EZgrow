@@ -75,8 +75,66 @@ bool          gHistoryFull  = false;
 
 static unsigned long lastSensorUpdateMs  = 0;
 static const unsigned long SENSOR_PERIOD = 2000; // 2 seconds
+static const unsigned long ONE_MINUTE_MS  = 60UL * 1000UL;
 
 static unsigned long lastHistoryLogMs = 0;
+static unsigned long minuteWindowStartMs = 0;
+static unsigned long historyWindowStartMs = 0;
+
+struct SensorAccumulator {
+  double tempSum   = 0.0;
+  size_t tempCount = 0;
+
+  double humSum   = 0.0;
+  size_t humCount = 0;
+
+  long   soil1Sum   = 0;
+  size_t soil1Count = 0;
+
+  long   soil2Sum   = 0;
+  size_t soil2Count = 0;
+};
+
+static SensorAccumulator minuteAcc;
+static SensorAccumulator historyAcc;
+
+static void resetAccumulator(SensorAccumulator &acc) {
+  acc.tempSum = acc.humSum = 0.0;
+  acc.tempCount = acc.humCount = 0;
+  acc.soil1Sum = acc.soil2Sum = 0;
+  acc.soil1Count = acc.soil2Count = 0;
+}
+
+static void accumulateSample(SensorAccumulator &acc, const SensorState &s) {
+  if (!isnan(s.temperatureC)) {
+    acc.tempSum += s.temperatureC;
+    acc.tempCount++;
+  }
+  if (!isnan(s.humidityRH)) {
+    acc.humSum += s.humidityRH;
+    acc.humCount++;
+  }
+
+  if (s.soil1Percent >= 0) {
+    acc.soil1Sum += s.soil1Percent;
+    acc.soil1Count++;
+  }
+  if (s.soil2Percent >= 0) {
+    acc.soil2Sum += s.soil2Percent;
+    acc.soil2Count++;
+  }
+}
+
+static SensorState averageFromAccumulator(const SensorAccumulator &acc, const SensorState &fallback) {
+  SensorState out = fallback;
+
+  if (acc.tempCount > 0) out.temperatureC = acc.tempSum / acc.tempCount;
+  if (acc.humCount > 0)  out.humidityRH   = acc.humSum / acc.humCount;
+  if (acc.soil1Count > 0) out.soil1Percent = (int)((acc.soil1Sum / (double)acc.soil1Count) + 0.5);
+  if (acc.soil2Count > 0) out.soil2Percent = (int)((acc.soil2Sum / (double)acc.soil2Count) + 0.5);
+
+  return out;
+}
 
 // Pump internal timing
 static bool          pumpRunning    = false;
@@ -691,6 +749,15 @@ void updateSensors() {
   if (nowMs - lastSensorUpdateMs < SENSOR_PERIOD) return;
   lastSensorUpdateMs = nowMs;
 
+  if (minuteWindowStartMs == 0) minuteWindowStartMs = nowMs;
+  if (historyWindowStartMs == 0) historyWindowStartMs = nowMs;
+
+  if (nowMs - minuteWindowStartMs >= ONE_MINUTE_MS) {
+    gSensors = averageFromAccumulator(minuteAcc, gSensors);
+    resetAccumulator(minuteAcc);
+    minuteWindowStartMs = nowMs;
+  }
+
   // SHT40
   sensors_event_t hum, temp;
   if (sht4.getEvent(&hum, &temp)) {
@@ -710,6 +777,11 @@ void updateSensors() {
 
   gSensors.soil1Percent = constrain(gSensors.soil1Percent, 0, 100);
   gSensors.soil2Percent = constrain(gSensors.soil2Percent, 0, 100);
+
+  accumulateSample(minuteAcc, gSensors);
+  accumulateSample(historyAcc, gSensors);
+
+  gSensors = averageFromAccumulator(minuteAcc, gSensors);
 }
 
 // ================= Control logic =================
@@ -898,18 +970,20 @@ void logHistorySample() {
     s.timestamp = 0;
   }
 
-  s.temp   = gSensors.temperatureC;
-  s.hum    = gSensors.humidityRH;
-  s.soil1  = gSensors.soil1Percent;
-  s.soil2  = gSensors.soil2Percent;
+  SensorState averaged = averageFromAccumulator(historyAcc, gSensors);
+
+  s.temp   = averaged.temperatureC;
+  s.hum    = averaged.humidityRH;
+  s.soil1  = averaged.soil1Percent;
+  s.soil2  = averaged.soil2Percent;
   s.light1 = gRelays.light1;
   s.light2 = gRelays.light2;
 
-  gHistoryIndex++;
-  if (gHistoryIndex >= HISTORY_SIZE) {
-    gHistoryIndex = 0;
-    gHistoryFull  = true;
-  }
+  resetAccumulator(historyAcc);
+  historyWindowStartMs = nowMs;
+
+  gHistoryIndex = (gHistoryIndex + 1) % HISTORY_SIZE;
+  if (gHistoryIndex == 0) gHistoryFull = true;
 }
 
 // ================= Hardware init (with AP fallback) =================

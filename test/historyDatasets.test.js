@@ -23,3 +23,29 @@ test('prepareHistoryDatasets maps soil readings and labels', async () => {
   assert.deepEqual(result.soil2, [30, 65]);
   assert.deepEqual(result.chamberLabels, ['Alpha', 'Beta']);
 });
+
+test('filterHistoryPoints trims by timestamped range', async () => {
+  const app = await loadApp();
+  const now = 1_710_000_000;
+  const points = [
+    { t: now - 4 * 24 * 60 * 60, soil1: 1 },
+    { t: now - 2 * 24 * 60 * 60, soil1: 2 },
+    { t: now - 24 * 60 * 60, soil1: 3 },
+  ];
+
+  const filtered = app.filterHistoryPoints(points, 2);
+
+  assert.equal(filtered.length, 2);
+  assert.deepEqual(filtered.map(p => p.soil1), [2, 3]);
+});
+
+test('filterHistoryPoints falls back to sample count without timestamps', async () => {
+  const app = await loadApp();
+  const points = Array.from({ length: 150 }, (_, idx) => ({ soil1: idx }));
+
+  const filtered = app.filterHistoryPoints(points, 1);
+
+  assert.equal(filtered.length, 144);
+  assert.equal(filtered[0].soil1, 6);
+  assert.equal(filtered[filtered.length - 1].soil1, 149);
+});

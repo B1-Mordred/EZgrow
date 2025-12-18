@@ -201,16 +201,53 @@ static void endPage(String& page) {
 static void handleHistoryApi() {
   if (!requireAuth()) return;
 
-  String json;
-  json.reserve(24000);
-  json += "{ \"points\":[";
+  int requestedDays = 1;
+  if (server.hasArg("days")) {
+    requestedDays = server.arg("days").toInt();
+  }
+  if (requestedDays < 1) requestedDays = 1;
+  if (requestedDays > 7) requestedDays = 7;
+
+  const unsigned long intervalSec  = HISTORY_INTERVAL_MS / 1000UL;
+  const size_t        samplesPerDay = intervalSec ? (86400UL / intervalSec) : 0;
+  const size_t        maxSamples    = samplesPerDay > 0
+    ? min((size_t)HISTORY_SIZE, samplesPerDay * (size_t)requestedDays)
+    : (size_t)HISTORY_SIZE;
 
   size_t count = gHistoryFull ? HISTORY_SIZE : gHistoryIndex;
-  bool first   = true;
+  if (count == 0) {
+    server.send(200, "application/json", "{ \"points\":[] }");
+    return;
+  }
 
+  // Find newest timestamp to build a cutoff window if time is available
+  time_t newestTs = 0;
+  bool   hasTs    = false;
+  for (size_t i = 0; i < count; ++i) {
+    size_t idx = gHistoryFull ? ((gHistoryIndex + i) % HISTORY_SIZE) : i;
+    time_t ts  = gHistoryBuf[idx].timestamp;
+    if (ts > 0) {
+      hasTs = true;
+      if (ts > newestTs) newestTs = ts;
+    }
+  }
+
+  const time_t cutoffTs = hasTs ? (newestTs - (requestedDays * 24 * 60 * 60)) : 0;
+
+  String json;
+  json.reserve(90000);
+  json += "{ \"points\":[";
+
+  bool first = true;
   for (size_t i = 0; i < count; ++i) {
     size_t idx = gHistoryFull ? ((gHistoryIndex + i) % HISTORY_SIZE) : i;
     HistorySample &s = gHistoryBuf[idx];
+
+    const bool withinRangeByTs   = hasTs && s.timestamp > 0 && s.timestamp >= cutoffTs;
+    const bool withinRangeByCount = (!hasTs || s.timestamp == 0)
+      ? ((count - i) <= maxSamples)
+      : false;
+    if (!(withinRangeByTs || withinRangeByCount)) continue;
 
     if (!first) json += ",";
     first = false;
@@ -795,8 +832,21 @@ static void handleRoot() {
   page += "</div>"; // card
 
   page += "<div class='card' style='margin-top:14px'>";
-  page += "<h2>History (last 24 h)</h2>";
-  page += "<div class='sub'>Temperature/humidity, soil moisture, and light states (logged every minute).</div>";
+  page += "<h2>History</h2>";
+  page += "<div class='sub'>Temperature/humidity and soil moisture logged every 10 minutes (retained for 7 days).</div>";
+  page += "<div class='field' style='max-width:220px;margin-top:12px'>";
+  page += "<label for='historyRange'>Show range</label>";
+  page += "<select id='historyRange'>";
+  page += "<option value='1'>Last 24 hours</option>";
+  page += "<option value='2'>Last 2 days</option>";
+  page += "<option value='3'>Last 3 days</option>";
+  page += "<option value='4'>Last 4 days</option>";
+  page += "<option value='5'>Last 5 days</option>";
+  page += "<option value='6'>Last 6 days</option>";
+  page += "<option value='7'>Last 7 days</option>";
+  page += "</select>";
+  page += "<div class='small'>Selection is saved per browser.</div>";
+  page += "</div>";
   page += "<div style='margin-top:12px'><canvas id='tempHumChart' height='150'></canvas></div>";
   page += "<div style='margin-top:14px'><canvas id='soilChart' height='120'></canvas></div>";
   page += "<!-- Light history chart removed -->";

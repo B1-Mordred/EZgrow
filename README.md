@@ -264,11 +264,10 @@ The device supports:
     - Device **restarts** and attempts connection with new credentials.
 
 - **History API (`/api/history`)**:
-  - JSON feed of the last 24 hours (1 point per minute) with:
-    - Timestamp.
-    - Temperature.
-    - Humidity.
-    - Light 1/2 states.
+  - JSON feed of logged samples (10-minute cadence) retained for 7 days.
+  - Defaults to the last 24 hours; pass `?days=1..7` to request a specific range.
+  - Each point is the average of all readings captured during its 10-minute window and includes timestamp, temperature, humidity, soil1/soil2 moisture, and Light 1/2 states.
+  - Fan/pump automation uses 1-minute averaged sensor readings (independent of the chart cadence) to avoid reacting to brief spikes.
 
 - **Static asset from LittleFS**:
   - `/chart.umd.min.js` – Chart.js UMD bundle served from LittleFS for offline charts.

@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+- Refined Config UI information architecture with Environment, Lights, Water & Air, Grow profile, Wi‑Fi, System, and Security tabs, compact preset cards, active profile indicators, and automation pills showing AUTO/MAN modes.
+- Added higher-contrast dark theme variables, grid-based preset previews with automation badges, an inline apply status + confirmation for apply-both actions, and a new `/api/grow/apply_all` endpoint for global preset application.
 - Added a Wi-Fi tab inside `/config` that reuses the `/wifi` onboarding UI while keeping `/wifi` as the captive portal entry point and simplifying navigation when the captive portal is active.
 - Added 120-second hold timers before fan or pump automation turns on (alongside pump min-off timing) and aligned chamber-only preset apply with preset auto fan/pump defaults.
 - Relaxed topbar logo styling to keep its natural aspect ratio while filling the header height.

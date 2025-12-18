@@ -2,6 +2,7 @@
 
 ## Unreleased
 - Added a favicon link and refreshed the topbar brand with the EZgrow logo for clearer device identification.
+- Refined topbar brand layout with dedicated logo sizing and typography for clearer alignment between the icon and label.
 - Served the EZgrow logo from LittleFS at `/logo-ezgrow.png` with a dedicated handler and route.
 - Added soil moisture history logging (soil1/soil2), exposing the data via `/api/history` with a dashboard soil chart.
 - Added chamber-scoped grow profile selectors with a `/api/grow/apply` endpoint, per-chamber soil inputs, HTML-stripped chamber names (1–24 chars), and updated config helper text for the shared pump.

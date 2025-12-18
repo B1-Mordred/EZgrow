@@ -578,26 +578,8 @@ void saveConfig() {
   prefs.end();
 }
 
-struct GrowChamberPreset {
-  int soilDry;
-  int soilWet;
-  int lightOnMinutes;
-  int lightOffMinutes;
-  bool lightAuto;
-};
-
 struct GrowProfilePreset {
   const char* label;
-  EnvConfig   env;
-  GrowChamberPreset chambers[2];
-  bool setAutoFan;
-  bool setAutoPump;
-  bool autoFan;
-  bool autoPump;
-};
-
-struct GrowProfileData {
-  String label;
   EnvConfig   env;
   GrowChamberPreset chambers[2];
   bool setAutoFan;

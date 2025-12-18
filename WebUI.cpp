@@ -329,12 +329,16 @@ static void handleStatusApi() {
   json += "\"light1\":{";
   json += "\"state\":"; json += (gRelays.light1 ? "1" : "0"); json += ",";
   json += "\"auto\":";  json += (gConfig.light1.enabled ? "1" : "0"); json += ",";
+  json += "\"on_minutes\":" + String(gConfig.light1.onMinutes) + ",";
+  json += "\"off_minutes\":" + String(gConfig.light1.offMinutes) + ",";
   json += "\"schedule\":\"" + jsonEscape(sched(gConfig.light1)) + "\"";
   json += "},";
 
   json += "\"light2\":{";
   json += "\"state\":"; json += (gRelays.light2 ? "1" : "0"); json += ",";
   json += "\"auto\":";  json += (gConfig.light2.enabled ? "1" : "0"); json += ",";
+  json += "\"on_minutes\":" + String(gConfig.light2.onMinutes) + ",";
+  json += "\"off_minutes\":" + String(gConfig.light2.offMinutes) + ",";
   json += "\"schedule\":\"" + jsonEscape(sched(gConfig.light2)) + "\"";
   json += "},";
 
@@ -924,7 +928,7 @@ static void handleConfigGet() {
   page += "<div class='field'><label><input type='checkbox' name='l2Auto' value='1'";
   if (gConfig.light2.enabled) page += " checked";
   page += "> Use schedule for Light 2</label>";
-  page += "<div class='small'>Schedules can cross midnight.</div></div>";
+  page += "<div class='small'>Schedules can cross midnight; offsets use the device timezone.</div></div>";
 
   page += "<div class='field'><label>Light 1 ON</label>"
           "<input type='time' name='l1On' value='" + minutesToTimeStrSafe(gConfig.light1.onMinutes) + "'></div>";
@@ -1093,10 +1097,15 @@ static void handleConfigGet() {
   for (size_t i = 0; i < growProfileCount(); i++) {
     const GrowProfileInfo* info = growProfileInfoAt(i);
     if (!info) continue;
-    page += "<tr><td>" + htmlEscape(info->label) + "</td>";
+    page += "<tr class='preset-row' data-preset-label='" + htmlEscape(info->label) + "'";
+    page += " data-l1-on='" + minutesToTimeStrSafe(info->light1.onMinutes) + "'";
+    page += " data-l1-off='" + minutesToTimeStrSafe(info->light1.offMinutes) + "'";
+    page += " data-l2-on='" + minutesToTimeStrSafe(info->light2.onMinutes) + "'";
+    page += " data-l2-off='" + minutesToTimeStrSafe(info->light2.offMinutes) + "'>";
+    page += "<td>" + htmlEscape(info->label) + "</td>";
     page += "<td>" + String(info->chamber1.soilDryThreshold) + " / " + String(info->chamber1.soilWetThreshold) + "</td>";
     page += "<td>" + String(info->chamber2.soilDryThreshold) + " / " + String(info->chamber2.soilWetThreshold) + "</td>";
-    page += "<td>L1 " + minutesToTimeStrSafe(info->light1.onMinutes) + "–" + minutesToTimeStrSafe(info->light1.offMinutes) +
+    page += "<td class='preset-schedules'>L1 " + minutesToTimeStrSafe(info->light1.onMinutes) + "–" + minutesToTimeStrSafe(info->light1.offMinutes) +
             " · L2 " + minutesToTimeStrSafe(info->light2.onMinutes) + "–" + minutesToTimeStrSafe(info->light2.offMinutes) + "</td>";
     page += "<td>" + String(info->env.fanOnTemp, 1) + " / " + String(info->env.fanOffTemp, 1) + "</td>";
     page += "<td>" + String(info->env.fanHumOn) + " / " + String(info->env.fanHumOff) + "</td>";

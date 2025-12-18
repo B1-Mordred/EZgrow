@@ -1,11 +1,12 @@
 # Changelog
 
 ## Unreleased
+- Added timezone-aware on/off countdowns for light schedules on the dashboard, grow profile previews, and preset tables using device time (including schedules that cross midnight).
 - Refined Config UI information architecture with Environment, Lights, Water & Air, Grow profile, Wi‑Fi, System, and Security tabs, compact preset cards, active profile indicators, and automation pills showing AUTO/MAN modes.
 - Added higher-contrast dark theme variables, grid-based preset previews with automation badges, an inline apply status + confirmation for apply-both actions, and a new `/api/grow/apply_all` endpoint for global preset application.
 - Styled select dropdowns and options with subtle text colors and clearer hover/focus contrast for consistent menu readability.
 - Added a Wi-Fi tab inside `/config` that reuses the `/wifi` onboarding UI while keeping `/wifi` as the captive portal entry point and simplifying navigation when the captive portal is active.
-- Hardened Wi‑Fi runtime behaviour with 15 s STA connect timeouts, minute-spaced reconnect attempts, automatic AP re-enable after extended disconnections, and quieter SSID logging when loading config/Wi‑Fi pages.
+- Hardened Wi‑Fi runtime behaviour with 15 s STA connect timeouts, minute-spaced reconnect attempts, automatic AP re-enable after extended disconnections, and quieter SSID logging when loading config/Wi-Fi pages.
 - Added 120-second hold timers before fan or pump automation turns on (alongside pump min-off timing) and aligned chamber-only preset apply with preset auto fan/pump defaults.
 - Relaxed topbar logo styling to keep its natural aspect ratio while filling the header height.
 - Documented the dashboard refresh: added EZgrow logo + favicon branding and removed the light history chart from the README.

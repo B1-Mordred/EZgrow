@@ -18,12 +18,13 @@ It displays status on a small **0.91" WE-DA-361 I²C OLED** and exposes a web UI
 - Dashboard (live sensors, relay states, modes)
 - Configuration (thresholds, timings, light schedules, grow profiles, timezone, web-auth config)
 - Timezone dropdown includes UTC, Europe/Berlin, Europe/London, US/Eastern, US/Central, US/Mountain, and US/Pacific options.
-- History charts (temperature, humidity, soil moisture, light states)
+- History charts (temperature, humidity, soil moisture)
 - History chart labels use the device timezone when supported by the browser.
 - Live sparklines for sensors on the dashboard
 - Grow profile tab with preset previews, chamber-targeted apply (Ch1→Light1, Ch2→Light2), plus system tab showing current device time
 - Relay controls that disable while requests are processing, with toast feedback for mode/toggle actions
 - Per-chamber dashboard labeling for soil tiles and light controls, with `/api/status` exposing chamber metadata (including `id` 1/2 and `idx` 0/1) for UI and integrations
+- Refreshed dashboard branding with an EZgrow logo and favicon for quick device identification
 - **Wi-Fi configuration** (scan SSIDs, select, store SSID/password in NVS)
 - **HTTP Basic Authentication** (credentials stored in NVS, configurable in UI)
 - **Captive portal** for Wi-Fi onboarding in AP mode (auto-redirects to `/wifi`)

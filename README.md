@@ -17,6 +17,7 @@ It displays status on a small **0.91" WE-DA-361 I²C OLED** and exposes a web UI
 
 - Dashboard (live sensors, relay states, modes)
 - Configuration (thresholds, timings, light schedules, grow profiles, timezone, web-auth config)
+- Config tabs grouped into **Environment**, **Lights**, **Water & Air**, **Grow profile**, **Wi‑Fi**, **System**, and **Security** for clearer navigation, with compact preset previews and automation pills.
 - Timezone dropdown includes UTC, Europe/Berlin, Europe/London, US/Eastern, US/Central, US/Mountain, and US/Pacific options.
 - History charts (temperature, humidity, soil moisture) with configurable axis ranges (defaults: 10–40 °C and 0–100 %RH)
 - History chart labels use the device timezone when supported by the browser.

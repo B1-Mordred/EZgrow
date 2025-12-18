@@ -38,8 +38,10 @@ test('applies brand layout and sizing styles', () => {
   );
 });
 
-test('includes Wi-Fi tab in config layout', () => {
-  const tabsPattern = /data-tabs='config'[^>]*>.*<button class='tab' type='button' data-tab='wifi'>Wi-Fi<\/button>/s;
+test('includes key config tabs with Wi-Fi and Water & Air', () => {
+  const tabsPattern = /data-tabs='config'[^>]*>.*data-tab='waterair'.*data-tab='profile'.*data-tab='wifi'>Wi-Fi<\/button>/s;
   assert.match(webUiSource, tabsPattern);
   assert.match(webUiSource, /<div class='tab-panel' data-tab='wifi'>/);
+  assert.match(webUiSource, /data-tab='waterair'>/);
+  assert.match(webUiSource, /data-tab='profile'>/);
 });

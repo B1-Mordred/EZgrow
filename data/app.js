@@ -181,6 +181,27 @@
 
   const datasetStr = (el, key) => (el && el.dataset && (key in el.dataset)) ? String(el.dataset[key]) : "";
 
+  function renderAutomationPreview(container, data){
+    if (!container) return;
+    container.innerHTML = "";
+    if (!data || (!data.setsAutoFan && !data.setsAutoPump)){
+      container.textContent = "—";
+      return;
+    }
+
+    const pills = document.createDocumentFragment();
+    const pill = (label, isAuto) => {
+      const span = document.createElement("span");
+      span.className = `mode-pill ${isAuto ? "mode-auto" : "mode-manual"}`;
+      span.textContent = `${label}: ${isAuto ? "AUTO" : "MANUAL"}`;
+      return span;
+    };
+
+    if (data.setsAutoFan) pills.appendChild(pill("Fan", !!data.autoFan));
+    if (data.setsAutoPump) pills.appendChild(pill("Pump", !!data.autoPump));
+    container.appendChild(pills);
+  }
+
   function readProfileOption(selectEl, chamberIdx){
     if (!selectEl) return null;
     const opt = selectEl.selectedOptions?.[0] || (selectEl.options ? selectEl.options[selectEl.selectedIndex] : null);
@@ -212,11 +233,13 @@
     const soilEl  = $(".pv-soil", previewEl);
     const lightEl = $(".pv-light", previewEl);
     const modeEl  = $(".pv-mode", previewEl);
+    const autoEl  = $(".pv-auto", previewEl);
 
     if (!data){
       if (soilEl) soilEl.textContent = "Select a preset";
       if (lightEl) lightEl.textContent = `${lightLabel}: —`;
       if (modeEl) modeEl.textContent = "Light mode: —";
+      if (autoEl) autoEl.textContent = "—";
       return;
     }
 
@@ -231,6 +254,7 @@
     if (soilEl) soilEl.textContent = soilText;
     if (lightEl) lightEl.textContent = `${lightLabel}: ${on} – ${off}`;
     if (modeEl) modeEl.textContent = `${lightLabel} mode: ${mode}`;
+    if (autoEl) renderAutomationPreview(autoEl, data);
 
     previewEl.dataset.previewLabel = chamberName;
   }
@@ -595,6 +619,14 @@
   async function initConfig(){
     if (document.body.dataset.page !== "config") return;
 
+    const setApplyStatus = (target, text) => {
+      const el = document.querySelector(`.apply-status[data-apply-status='${target}']`);
+      if (el){
+        el.textContent = text || "";
+        el.hidden = !text;
+      }
+    };
+
     try{
       const s = await apiGet(`/api/status?ts=${Date.now()}`);
       const tzLabel = s.timezone ? ` (${s.timezone})` : "";
@@ -624,6 +656,39 @@
       }
     });
 
+    const applyAllBtn = $("#applyProfileAllBtn");
+    if (applyAllBtn){
+      applyAllBtn.addEventListener("click", async ev => {
+        ev.preventDefault();
+        const select = $("#globalPresetSelect");
+        const id = Number(select?.value || 0);
+        if (Number.isNaN(id)) return;
+        const ok = window.confirm(
+          "Apply preset to both chambers and environment?\n\nThis will overwrite soil thresholds, light schedules and automation defaults for both chambers and the shared environment."
+        );
+        if (!ok) return;
+
+        applyAllBtn.disabled = true;
+        applyAllBtn.setAttribute("aria-busy", "true");
+        try{
+          const res = await fetch(`/api/grow/apply_all?profile=${encodeURIComponent(id)}`, { method:"POST" });
+          if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+          const json = await res.json();
+          const label = json?.applied_profile || select?.selectedOptions?.[0]?.dataset?.label || "Preset";
+          setAppliedProfileBanner(label);
+          setApplyStatus("all", "Applied just now");
+          setApplyStatus("ch1", "Applied just now");
+          setApplyStatus("ch2", "Applied just now");
+          toast("Preset applied to both chambers and environment.");
+        }catch(e){
+          toast(`Apply failed: ${e.message}`);
+        }finally{
+          applyAllBtn.disabled = false;
+          applyAllBtn.removeAttribute("aria-busy");
+        }
+      });
+    }
+
     $$(".apply-profile").forEach(btn => {
       btn.addEventListener("click", async () => {
         const { chamberIdx, chamberId, requestValue } = resolveChamberDataset(btn.dataset || {});
@@ -650,6 +715,7 @@
             const label = res.label || `${appliedName} -> ${chamberName}`;
             setAppliedProfileBanner(label);
             toast("Preset applied");
+            setApplyStatus(`ch${chamberId}`, "Applied just now");
           }
         }catch(e){
           toast(`Apply failed: ${e.message}`);

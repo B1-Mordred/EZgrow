@@ -419,6 +419,29 @@ static void handleApplyProfileChamberApi() {
   server.send(200, "application/json", json);
 }
 
+static void handleApplyProfileAllApi() {
+  if (!requireAuth()) return;
+  if (!server.hasArg("profile")) {
+    server.send(400, "application/json", "{\"ok\":false,\"error\":\"missing_args\"}");
+    return;
+  }
+
+  int profileId = server.arg("profile").toInt();
+  String appliedName;
+  if (!applyGrowProfile(profileId, appliedName)) {
+    server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid\"}");
+    return;
+  }
+
+  saveConfig();
+
+  String json = "{";
+  json += "\"ok\":true,";
+  json += "\"applied_profile\":\"" + jsonEscape(appliedName) + "\"";
+  json += "}";
+  server.send(200, "application/json", json);
+}
+
 // ================= Static assets from LittleFS =================
 
 static void handleChartJs() {
@@ -830,13 +853,13 @@ static void handleConfigGet() {
   page += "</div>";
 
   page += "<div class='tabs' data-tabs='config' data-persist='ezgrow_config_tab' style='margin-top:12px'>";
-  page += "<button class='tab' type='button' data-tab='env'>Environment</button>";
-  page += "<button class='tab' type='button' data-tab='lights'>Lights</button>";
-  page += "<button class='tab' type='button' data-tab='auto'>Automation</button>";
-  page += "<button class='tab' type='button' data-tab='grow'>Grow profile</button>";
-  page += "<button class='tab' type='button' data-tab='wifi'>Wi-Fi</button>";
-  page += "<button class='tab' type='button' data-tab='system'>System</button>";
-  page += "<button class='tab' type='button' data-tab='security'>Security</button>";
+  page += "<button type='button' class='tab' data-tab='env'>Environment</button>";
+  page += "<button type='button' class='tab' data-tab='lights'>Lights</button>";
+  page += "<button type='button' class='tab' data-tab='waterair'>Water &amp; Air</button>";
+  page += "<button type='button' class='tab' data-tab='profile'>Grow profile</button>";
+  page += "<button type='button' class='tab' data-tab='wifi'>Wi-Fi</button>";
+  page += "<button type='button' class='tab' data-tab='system'>System</button>";
+  page += "<button type='button' class='tab' data-tab='security'>Security</button>";
   page += "</div>";
 
   page += "<div class='tab-panels'>";
@@ -846,22 +869,6 @@ static void handleConfigGet() {
   // ENV
   page += "<div class='tab-panel' data-tab='env'>";
   page += "<div class='form-grid'>";
-  page += "<div class='field'><label>Fan ON temperature (°C)</label>"
-          "<input type='number' step='0.1' name='fanOn' value='" + String(gConfig.env.fanOnTemp, 1) + "'></div>";
-  page += "<div class='field'><label>Fan OFF temperature (°C)</label>"
-          "<input type='number' step='0.1' name='fanOff' value='" + String(gConfig.env.fanOffTemp, 1) + "'></div>";
-  page += "<div class='field'><label>Fan ON humidity (%RH)</label>"
-          "<input type='number' step='1' name='fanHumOn' value='" + String(gConfig.env.fanHumOn) + "'></div>";
-  page += "<div class='field'><label>Fan OFF humidity (%RH)</label>"
-          "<input type='number' step='1' name='fanHumOff' value='" + String(gConfig.env.fanHumOff) + "'></div>";
-  page += "<div class='field'><label>Temperature chart min (°C)</label>"
-          "<input type='number' step='0.1' name='chartTempMin' value='" + String(gConfig.charts.tempMinC, 1) + "'><div class='small'>Dashboard temperature history Y-axis minimum.</div></div>";
-  page += "<div class='field'><label>Temperature chart max (°C)</label>"
-          "<input type='number' step='0.1' name='chartTempMax' value='" + String(gConfig.charts.tempMaxC, 1) + "'><div class='small'>Dashboard temperature history Y-axis maximum.</div></div>";
-  page += "<div class='field'><label>Humidity chart min (%RH)</label>"
-          "<input type='number' step='1' name='chartHumMin' value='" + String(gConfig.charts.humMinPct) + "'><div class='small'>Dashboard humidity history Y-axis minimum.</div></div>";
-  page += "<div class='field'><label>Humidity chart max (%RH)</label>"
-          "<input type='number' step='1' name='chartHumMax' value='" + String(gConfig.charts.humMaxPct) + "'><div class='small'>Dashboard humidity history Y-axis maximum.</div></div>";
   page += "<div class='field'><label>Chamber 1 name</label>"
           "<input type='text' maxlength='24' name='c1Name' value='" + htmlEscape(gConfig.chamber1.name) + "'><div class='small'>1–24 characters, HTML is stripped automatically.</div></div>";
   page += "<div class='field'><label>Chamber 2 name</label>"
@@ -878,10 +885,14 @@ static void handleConfigGet() {
           "<input type='number' step='1' name='c1Prof' value='" + String(gConfig.chamber1.profileId) + "'></div>";
   page += "<div class='field'><label>Chamber 2 profile ID (optional)</label>"
           "<input type='number' step='1' name='c2Prof' value='" + String(gConfig.chamber2.profileId) + "'></div>";
-  page += "<div class='field'><label>Pump minimum OFF time (seconds)</label>"
-          "<input type='number' step='1' name='pumpOff' value='" + String(gConfig.env.pumpMinOffSec) + "'></div>";
-  page += "<div class='field'><label>Pump maximum ON time (seconds)</label>"
-          "<input type='number' step='1' name='pumpOn' value='" + String(gConfig.env.pumpMaxOnSec) + "'></div>";
+  page += "<div class='field'><label>Temperature chart min (°C)</label>"
+          "<input type='number' step='0.1' name='chartTempMin' value='" + String(gConfig.charts.tempMinC, 1) + "'><div class='small'>Dashboard temperature history Y-axis minimum.</div></div>";
+  page += "<div class='field'><label>Temperature chart max (°C)</label>"
+          "<input type='number' step='0.1' name='chartTempMax' value='" + String(gConfig.charts.tempMaxC, 1) + "'><div class='small'>Dashboard temperature history Y-axis maximum.</div></div>";
+  page += "<div class='field'><label>Humidity chart min (%RH)</label>"
+          "<input type='number' step='1' name='chartHumMin' value='" + String(gConfig.charts.humMinPct) + "'><div class='small'>Dashboard humidity history Y-axis minimum.</div></div>";
+  page += "<div class='field'><label>Humidity chart max (%RH)</label>"
+          "<input type='number' step='1' name='chartHumMax' value='" + String(gConfig.charts.humMaxPct) + "'><div class='small'>Dashboard humidity history Y-axis maximum.</div></div>";
   page += "</div>";
   page += "<p class='small' style='margin-top:10px'>Tip: keep hysteresis sane (OFF < ON) to avoid oscillation. Names are limited to 24 characters with HTML stripped. Wet thresholds must stay above dry thresholds per chamber while using the shared pump.</p>";
   page += "</div>";
@@ -910,9 +921,22 @@ static void handleConfigGet() {
   page += "</div>";
   page += "</div>";
 
-  // AUTO
-  page += "<div class='tab-panel' data-tab='auto'>";
+  // WATER & AIR
+  page += "<div class='tab-panel' data-tab='waterair'>";
+  page += "<div class='sub'>Pump and fan thresholds, automation toggles, and safety timing for shared hardware.</div>";
   page += "<div class='form-grid'>";
+  page += "<div class='field'><label>Fan ON temperature (°C)</label>"
+          "<input type='number' step='0.1' name='fanOn' value='" + String(gConfig.env.fanOnTemp, 1) + "'></div>";
+  page += "<div class='field'><label>Fan OFF temperature (°C)</label>"
+          "<input type='number' step='0.1' name='fanOff' value='" + String(gConfig.env.fanOffTemp, 1) + "'></div>";
+  page += "<div class='field'><label>Fan ON humidity (%RH)</label>"
+          "<input type='number' step='1' name='fanHumOn' value='" + String(gConfig.env.fanHumOn) + "'></div>";
+  page += "<div class='field'><label>Fan OFF humidity (%RH)</label>"
+          "<input type='number' step='1' name='fanHumOff' value='" + String(gConfig.env.fanHumOff) + "'></div>";
+  page += "<div class='field'><label>Pump minimum OFF time (seconds)</label>"
+          "<input type='number' step='1' name='pumpOff' value='" + String(gConfig.env.pumpMinOffSec) + "'><div class='small'>Controls dry-to-wet pump hysteresis along with presets.</div></div>";
+  page += "<div class='field'><label>Pump maximum ON time (seconds)</label>"
+          "<input type='number' step='1' name='pumpOn' value='" + String(gConfig.env.pumpMaxOnSec) + "'><div class='small'>Safety cutoff for the shared pump.</div></div>";
   page += "<div class='field'><label><input type='checkbox' name='autoFan' value='1'";
   if (gConfig.autoFan) page += " checked";
   page += "> Automatic fan control</label><div class='small'>Uses temperature/humidity thresholds.</div></div>";
@@ -923,8 +947,18 @@ static void handleConfigGet() {
   page += "</div>";
 
   // GROW PROFILE
-  page += "<div class='tab-panel' data-tab='grow'>";
-  page += "<div class='form-grid'>";
+  page += "<div class='tab-panel' data-tab='profile'>";
+  page += "<div class='sub'>Grow profiles are presets for soil thresholds, light schedule and automation (fan/pump). Applying a preset updates the configuration and enables AUTO modes where defined.</div>";
+
+  auto profileLabelForId = [](int id) -> String {
+    if (id < 0) return String("");
+    for (size_t i = 0; i < growProfileCount(); i++) {
+      const GrowProfileInfo* info = growProfileInfoAt(i);
+      if (!info) continue;
+      if ((int)i == id) return String(info->label);
+    }
+    return String("");
+  };
 
   auto profileOptions = [](int selectedId) -> String {
     auto profileDataAttrs = [](const GrowProfileInfo* info) -> String {
@@ -971,43 +1005,75 @@ static void handleConfigGet() {
   auto chamberProfileRow = [&](int idx, const ChamberConfig& cfg, int selectedId) {
     const char* fallback = (idx == 0) ? DEFAULT_CHAMBER1_NAME : DEFAULT_CHAMBER2_NAME;
     const String chamberName = cfg.name.length() ? cfg.name : String(fallback);
+    const String activeProfile = profileLabelForId(cfg.profileId);
+    const bool lightAuto = (idx == 0) ? gConfig.light1.enabled : gConfig.light2.enabled;
+    auto modePill = [](const char* label, bool isAuto) -> String {
+      String pill = "<span class='mode-pill ";
+      pill += isAuto ? "mode-auto" : "mode-manual";
+      pill += "'>";
+      pill += label;
+      pill += ": ";
+      pill += isAuto ? "AUTO" : "MANUAL";
+      pill += "</span>";
+      return pill;
+    };
+
+    page += "<div class='grow-card' data-chamber='" + String(idx) + "' data-chamber-id='" + String(idx + 1) + "' data-chamber-name='" + htmlEscape(chamberName) + "' data-light-label='Light " + String(idx + 1) + "'>";
+    page += "<div class='grow-card-head'>";
+    page += "<div><div class='eyebrow'>Chamber " + String(idx + 1) + "</div>";
+    page += "<div class='grow-card-title'>" + htmlEscape(chamberName) + "</div>";
+    page += "<div class='sub active-profile' data-active-profile='ch" + String(idx + 1) + "'>Active profile: " + htmlEscape(activeProfile.length() ? activeProfile : String("Custom/manual")) + "</div></div>";
+    page += "<div class='mode-pill-row'>";
+    page += modePill("Light", lightAuto);
+    page += modePill("Fan", gConfig.autoFan);
+    page += modePill("Pump", gConfig.autoPump);
+    page += "</div>";
+    page += "</div>";
+
     page += "<div class='field chamber-profile' data-chamber='" + String(idx) + "' data-chamber-id='" + String(idx + 1) + "' data-chamber-name='" + htmlEscape(chamberName) + "' data-light-label='Light " + String(idx + 1) + "'>";
-    page += "<label>Preset for " + htmlEscape(chamberName) + "</label>";
-    page += "<div class='row' style='gap:8px;flex-wrap:wrap'>";
+    page += "<label>Preset</label>";
+    page += "<div class='row grow-action-row'>";
     page += "<select id='prof-ch" + String(idx + 1) + "' name='growProfileCh" + String(idx + 1) + "'>";
     page += profileOptions(selectedId);
     page += "</select>";
     page += "<button class='btn primary apply-profile' type='button' data-chamber='" + String(idx) + "' data-chamber-id='" + String(idx + 1) + "' data-chamber-name='" + htmlEscape(chamberName) + "' data-light-label='Light " + String(idx + 1) + "'>";
-    page += "Apply to " + htmlEscape(chamberName);
+    page += "Apply to Chamber " + String(idx + 1);
     page += "</button></div>";
+    page += "<div class='apply-status' data-apply-status='ch" + String(idx + 1) + "'></div>";
     page += "<div class='small'>Updates only this chamber's soil thresholds and linked light schedule/auto flag.</div>";
-    page += "<div class='profile-preview' data-preview='ch" + String(idx + 1) + "' data-chamber-name='" + htmlEscape(chamberName) + "' data-light-label='Light " + String(idx + 1) + "'>";
-    page += "<div class='preview-head'><div class='preview-title'>Preview for " + htmlEscape(chamberName) + "</div>";
-    page += "<div class='small'>Shows the preset values before applying.</div></div>";
-    page += "<table class='table preview-table'><tr><th>Soil</th><td class='pv-soil'>Select a preset</td></tr>";
-    page += "<tr><th>Light schedule</th><td class='pv-light'>—</td></tr>";
-    page += "<tr><th>Light mode</th><td class='pv-mode'>—</td></tr></table>";
     page += "</div>";
+    page += "<div class='profile-preview' data-preview='ch" + String(idx + 1) + "' data-chamber-name='" + htmlEscape(chamberName) + "' data-light-label='Light " + String(idx + 1) + "'>";
+    page += "<div class='preview-header'>Preview</div>";
+    page += "<div class='preview-grid'>";
+    page += "<div class='preview-item'><label>Soil dry/wet</label><div class='pv-soil'>Select a preset</div></div>";
+    page += "<div class='preview-item'><label>Light schedule</label><div class='pv-light'>—</div></div>";
+    page += "<div class='preview-item'><label>Light mode</label><div class='pv-mode'>—</div></div>";
+    page += "<div class='preview-item'><label>Automation</label><div class='pv-auto'>—</div></div>";
+    page += "</div></div>";
     page += "</div>";
   };
 
   int chamber1Selected = (gConfig.chamber1.profileId > 0) ? gConfig.chamber1.profileId : 0;
   int chamber2Selected = (gConfig.chamber2.profileId > 0) ? gConfig.chamber2.profileId : 0;
-  chamberProfileRow(0, gConfig.chamber1, chamber1Selected);
-  chamberProfileRow(1, gConfig.chamber2, chamber2Selected);
-
-  page += "<div class='field'><label>Apply preset to both + env</label>";
-  page += "<div class='row' style='gap:8px;flex-wrap:wrap'>";
-  page += "<select name='growProfileAll'>";
+  page += "<div class='grow-global row' style='align-items:flex-end;gap:12px;flex-wrap:wrap'>";
+  page += "<div class='grow-global-label'><label>Global preset</label><div class='small'>Apply to both chambers + env</div></div>";
+  page += "<div class='row grow-action-row'>";
+  page += "<select id='globalPresetSelect' name='growProfileAll'>";
   page += profileOptions(0);
   page += "</select>";
-  page += "<button class='btn' type='submit' name='applyProfile' value='1'>Apply to both + env</button>";
-  page += "</div><div class='small'>Applies env thresholds, both chambers, and any preset automation defaults.</div></div>";
-
+  page += "<button class='btn primary' type='submit' id='applyProfileAllBtn' name='applyProfile' value='1'>Apply to both + env</button>";
   page += "</div>";
+  page += "<div class='apply-status' data-apply-status='all'></div>";
+  page += "</div>";
+
+  page += "<div class='grow-profile-grid'>";
+  chamberProfileRow(0, gConfig.chamber1, chamber1Selected);
+  chamberProfileRow(1, gConfig.chamber2, chamber2Selected);
+  page += "</div>";
+
   page += "<div class='small' style='margin-top:10px'>Preset preview:</div>";
   page += "<table class='table profile-summary' style='margin-top:6px'>";
-  page += "<tr><th>Preset</th><th>Ch1 soil (dry/wet %)</th><th>Ch2 soil (dry/wet %)</th><th>Light windows (L1/L2)</th><th>Fan on/off (°C)</th><th>Hum on/off (%)</th><th>Pump OFF/ON (s)</th><th>Fan/Pump mode change</th></tr>";
+  page += "<tr><th>Preset</th><th>Ch1 soil (dry/wet %)</th><th>Ch2 soil (dry/wet %)</th><th>Light windows (L1/L2)</th><th>Fan on/off (°C)</th><th>Hum on/off (%)</th><th>Pump OFF/ON (s)</th><th>Automation</th></tr>";
   for (size_t i = 0; i < growProfileCount(); i++) {
     const GrowProfileInfo* info = growProfileInfoAt(i);
     if (!info) continue;
@@ -1019,7 +1085,10 @@ static void handleConfigGet() {
     page += "<td>" + String(info->env.fanOnTemp, 1) + " / " + String(info->env.fanOffTemp, 1) + "</td>";
     page += "<td>" + String(info->env.fanHumOn) + " / " + String(info->env.fanHumOff) + "</td>";
     page += "<td>" + String(info->env.pumpMinOffSec) + " / " + String(info->env.pumpMaxOnSec) + "</td>";
-    page += "<td>Fan " + htmlAutoChange(info->setsAutoFan, info->autoFan) + " · Pump " + htmlAutoChange(info->setsAutoPump, info->autoPump) + "</td></tr>";
+    page += "<td><div class='automation-pills'>";
+    page += "<span class='mode-pill " + String(info->setsAutoFan && info->autoFan ? "mode-auto" : "mode-manual") + "'>Fan: " + htmlAutoChange(info->setsAutoFan, info->autoFan) + "</span>";
+    page += "<span class='mode-pill " + String(info->setsAutoPump && info->autoPump ? "mode-auto" : "mode-manual") + "'>Pump: " + htmlAutoChange(info->setsAutoPump, info->autoPump) + "</span>";
+    page += "</div></td></tr>";
   }
   page += "</table>";
   page += "</div>";
@@ -1335,6 +1404,8 @@ void initWebServer() {
   server.on("/api/toggle",       HTTP_GET,  handleApiToggle);
   server.on("/api/mode",         HTTP_GET,  handleApiMode);
   server.on("/api/grow/apply",   HTTP_GET,  handleApplyProfileChamberApi);
+  server.on("/api/grow/apply_all", HTTP_POST, handleApplyProfileAllApi);
+  server.on("/api/grow/apply_all", HTTP_GET,  handleApplyProfileAllApi);
 
   server.on("/config",           HTTP_GET,  handleConfigGet);
   server.on("/config",           HTTP_POST, handleConfigPost);

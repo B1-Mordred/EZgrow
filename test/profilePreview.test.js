@@ -16,18 +16,20 @@ function setupDom(){
       <option value="1" data-label="Seedling" data-c1-dry="34" data-c1-wet="44" data-c2-dry="54" data-c2-wet="64" data-l1-on="06:30" data-l1-off="18:00" data-l1-auto="1" data-l2-on="07:30" data-l2-off="19:30" data-l2-auto="1" data-auto-fan="1" data-auto-pump="0" data-set-auto-fan="1" data-set-auto-pump="0">Seedling</option>
     </select>
     <div class="profile-preview" data-preview="ch1" data-chamber-name="Alpha" data-light-label="Light 1">
-      <table class="table preview-table">
-        <tr><th>Soil</th><td class="pv-soil"></td></tr>
-        <tr><th>Light schedule</th><td class="pv-light"></td></tr>
-        <tr><th>Light mode</th><td class="pv-mode"></td></tr>
-      </table>
+      <div class="preview-grid">
+        <div class="preview-item"><label>Soil</label><div class="pv-soil"></div></div>
+        <div class="preview-item"><label>Light schedule</label><div class="pv-light"></div></div>
+        <div class="preview-item"><label>Light mode</label><div class="pv-mode"></div></div>
+        <div class="preview-item"><label>Automation</label><div class="pv-auto"></div></div>
+      </div>
     </div>
     <div class="profile-preview" data-preview="ch2" data-chamber-name="Beta" data-light-label="Light 2">
-      <table class="table preview-table">
-        <tr><th>Soil</th><td class="pv-soil"></td></tr>
-        <tr><th>Light schedule</th><td class="pv-light"></td></tr>
-        <tr><th>Light mode</th><td class="pv-mode"></td></tr>
-      </table>
+      <div class="preview-grid">
+        <div class="preview-item"><label>Soil</label><div class="pv-soil"></div></div>
+        <div class="preview-item"><label>Light schedule</label><div class="pv-light"></div></div>
+        <div class="preview-item"><label>Light mode</label><div class="pv-mode"></div></div>
+        <div class="preview-item"><label>Automation</label><div class="pv-auto"></div></div>
+      </div>
     </div>
   </body>`;
 
@@ -81,6 +83,8 @@ test('renderChamberPreview populates preview text', () => {
   assert.equal(document.querySelector('.pv-soil').textContent, '34% dry / 44% wet');
   assert.ok(document.querySelector('.pv-light').textContent.includes('06:30'));
   assert.ok(document.querySelector('.pv-mode').textContent.includes('AUTO'));
+  const autoText = document.querySelector('.pv-auto').textContent;
+  assert.ok(autoText.includes('Fan'));
 });
 
 test('buildChamberConfirmMessage includes target values', () => {

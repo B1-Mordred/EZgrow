@@ -237,6 +237,26 @@ a{color:inherit;text-decoration:none}
   background:var(--bg-elevated);
   font-size:1rem;
 }
+.field select,
+select{
+  color:var(--text-subtle);
+}
+select:hover,
+select:focus-visible{
+  color:var(--text-main);
+  border-color:var(--accent);
+  outline:2px solid var(--accent);
+  outline-offset:2px;
+}
+option{
+  color:var(--text-subtle);
+  background:var(--bg-main);
+}
+option:hover,
+option:checked{
+  color:var(--text-main);
+  background:var(--bg-elevated);
+}
 .small{color:var(--muted);font-size:13px}
 
 .table{

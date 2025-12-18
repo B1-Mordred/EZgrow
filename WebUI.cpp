@@ -160,7 +160,7 @@ static void beginPage(String& page, const char* title, const char* activeNav, bo
 
   // Top bar
   page += "<div class='topbar'><div class='topbar-inner'>";
-  page += "<div class='brand'><img src='/logo-ezgrow.png' class='brand-logo' alt='EZgrow logo'><span class='brand-text'>EZgrow</span></div>";
+  page += "<div class='brand'><img src='/logo-ezgrow.png' class='brand-logo' alt='EZgrow logo'><span class='brand-text'></span></div>";
 
   page += "<div class='nav'>";
   if (!sCaptivePortalActive) {
@@ -1509,6 +1509,7 @@ void initWebServer() {
 
   server.begin();
 }
+
 
 void handleWebServer() {
   refreshCaptivePortalState();

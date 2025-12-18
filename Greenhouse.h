@@ -51,8 +51,26 @@ struct GreenhouseConfig {
   ChartScaleConfig charts;
 };
 
+struct GrowChamberPreset {
+  int soilDry;
+  int soilWet;
+  int lightOnMinutes;
+  int lightOffMinutes;
+  bool lightAuto;
+};
+
+struct GrowProfileData {
+  String label;
+  EnvConfig   env;
+  GrowChamberPreset chambers[2];
+  bool setAutoFan;
+  bool setAutoPump;
+  bool autoFan;
+  bool autoPump;
+};
+
 struct GrowProfileInfo {
-  const char* label;
+  String label;
   EnvConfig   env;
   LightSchedule light1;
   LightSchedule light2;
@@ -146,6 +164,9 @@ bool applyGrowProfile(int profileId, String &appliedName);
 bool applyGrowProfileToChamber(int chamberIdx, int profileId, String &appliedName);
 size_t growProfileCount();
 const GrowProfileInfo* growProfileInfoAt(size_t idx);
+bool getGrowProfile(size_t idx, GrowProfileData &outProfile);
+bool updateGrowProfile(size_t idx, const GrowProfileData &data);
+void persistGrowProfiles();
 
 // Convenience: convert (minutes since midnight) to "HH:MM"
 String minutesToTimeStr(int minutes);

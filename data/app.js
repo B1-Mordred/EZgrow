@@ -672,6 +672,19 @@
       setText("#ctl-light1-name", chamberLabels[0]);
       setText("#ctl-light2-name", chamberLabels[1]);
 
+      const profileLabel = (entry) => {
+        const raw = (entry && typeof entry.profile_label === "string") ? entry.profile_label.trim() : "";
+        const pid = Number(entry?.profile_id);
+        if (raw) return raw;
+        if (Number.isFinite(pid) && pid >= 0) return "Custom/manual";
+        return "Not set";
+      };
+
+      const ch1Entry = Array.isArray(s.chambers) ? s.chambers[0] : null;
+      const ch2Entry = Array.isArray(s.chambers) ? s.chambers[1] : null;
+      setText("#profile-ch1", `Profile: ${profileLabel(ch1Entry)}`);
+      setText("#profile-ch2", `Profile: ${profileLabel(ch2Entry)}`);
+
       chartScales = resolveChartScales(s.chart_scales);
 
       pushSpark("temp", sparkData.temp,  s.sensors?.temp_c);

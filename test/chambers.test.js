@@ -53,7 +53,7 @@ test('dashboard refresh populates chamber labels with fallbacks', async () => {
     timezone_iana:"Etc/UTC",
     wifi:{ connected:false, mode:"AP" },
     sensors:{ temp_c:22.3, hum_rh:55, soil1:30, soil2:40 },
-    chambers:[{ id:1, name:"Leafy Greens" }, { id:2, name:"" }],
+    chambers:[{ id:1, name:"Leafy Greens", profile_label:"Vegetative", profile_id:2 }, { id:2, name:"", profile_id:-1 }],
     relays:{
       light1:{ state:1, auto:1, schedule:"08:00–20:00" },
       light2:{ state:0, auto:0, schedule:"20:00–06:00" },
@@ -63,7 +63,7 @@ test('dashboard refresh populates chamber labels with fallbacks', async () => {
   };
 
   const dom = setupDom(
-    "<!doctype html><body data-page='dashboard'><div id='lbl-s1'></div><div id='lbl-s2'></div><div id='ctl-light1-name'></div><div id='ctl-light2-name'></div></body>",
+    "<!doctype html><body data-page='dashboard'><div id='lbl-s1'></div><div id='lbl-s2'></div><div id='ctl-light1-name'></div><div id='ctl-light2-name'></div><div id='profile-ch1'></div><div id='profile-ch2'></div></body>",
     async url => {
       if (String(url).startsWith('/api/status')) return { ok:true, json: async () => statusPayload };
       if (String(url).startsWith('/api/history')) return { ok:true, json: async () => ({ points: [] }) };
@@ -78,6 +78,40 @@ test('dashboard refresh populates chamber labels with fallbacks', async () => {
   assert.equal(document.querySelector('#lbl-s2').textContent, "Chamber 2");
   assert.equal(document.querySelector('#ctl-light1-name').textContent, "Leafy Greens");
   assert.equal(document.querySelector('#ctl-light2-name').textContent, "Chamber 2");
+  assert.equal(document.querySelector('#profile-ch1').textContent, "Profile: Vegetative");
+  assert.equal(document.querySelector('#profile-ch2').textContent, "Profile: Not set");
+});
+
+test('dashboard profile label falls back to custom/manual when preset id is zero', async () => {
+  const statusPayload = {
+    time:"10:00:00",
+    time_synced:true,
+    timezone:"UTC",
+    timezone_iana:"Etc/UTC",
+    sensors:{ temp_c:22.3, hum_rh:55, soil1:30, soil2:40 },
+    chambers:[{ id:1, name:"Test Chamber", profile_id:0 }, { id:2, name:"", profile_id:1, profile_label:"Seedling" }],
+    relays:{
+      light1:{ state:1, auto:1, schedule:"08:00–20:00" },
+      light2:{ state:0, auto:0, schedule:"20:00–06:00" },
+      fan:{ state:0, auto:1 },
+      pump:{ state:0, auto:1 }
+    }
+  };
+
+  const dom = setupDom(
+    "<!doctype html><body data-page='dashboard'><div id='profile-ch1'></div><div id='profile-ch2'></div></body>",
+    async url => {
+      if (String(url).startsWith('/api/status')) return { ok:true, json: async () => statusPayload };
+      if (String(url).startsWith('/api/history')) return { ok:true, json: async () => ({ points: [] }) };
+      return { ok:true, json: async () => ({}) };
+    }
+  );
+
+  await new Promise(res => setTimeout(res, 10));
+
+  const { document } = dom.window;
+  assert.equal(document.querySelector('#profile-ch1').textContent, "Profile: Custom/manual");
+  assert.equal(document.querySelector('#profile-ch2').textContent, "Profile: Seedling");
 });
 
 test('config grow profile buttons call chamber endpoint and update banner', async () => {

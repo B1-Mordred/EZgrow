@@ -127,6 +127,46 @@
     });
   }
 
+  const defaultChartScales = {
+    tempMin: 10,
+    tempMax: 40,
+    humMin:  0,
+    humMax:  100,
+  };
+
+  function resolveChartScales(raw){
+    const clamp = (v, lo, hi) => {
+      const num = Number(v);
+      if (!Number.isFinite(num)) return null;
+      if (num < lo) return lo;
+      if (num > hi) return hi;
+      return num;
+    };
+
+    const tempMin = clamp(raw?.temp_min ?? raw?.tempMin, -40, 120);
+    const tempMax = clamp(raw?.temp_max ?? raw?.tempMax, -40, 120);
+    const humMin  = clamp(raw?.hum_min ?? raw?.humMin,   0,   100);
+    const humMax  = clamp(raw?.hum_max ?? raw?.humMax,   0,   100);
+
+    const scales = {
+      tempMin: tempMin ?? defaultChartScales.tempMin,
+      tempMax: tempMax ?? defaultChartScales.tempMax,
+      humMin:  humMin  ?? defaultChartScales.humMin,
+      humMax:  humMax  ?? defaultChartScales.humMax,
+    };
+
+    if (scales.tempMax <= scales.tempMin){
+      scales.tempMin = defaultChartScales.tempMin;
+      scales.tempMax = defaultChartScales.tempMax;
+    }
+    if (scales.humMax <= scales.humMin){
+      scales.humMin = defaultChartScales.humMin;
+      scales.humMax = defaultChartScales.humMax;
+    }
+
+    return scales;
+  }
+
   const datasetInt = (el, key) => {
     if (!el || !el.dataset || !(key in el.dataset)) return null;
     const v = Number.parseInt(el.dataset[key], 10);
@@ -364,6 +404,7 @@
     let lastOkTs = Date.now();
     let consecutiveErrors = 0;
     let chamberLabels = ["Chamber 1", "Chamber 2"];
+    let chartScales = defaultChartScales;
 
     function setStaleState(on){
       document.body.classList.toggle("stale", !!on);
@@ -400,13 +441,15 @@
       setText("#ctl-light1-name", chamberLabels[0]);
       setText("#ctl-light2-name", chamberLabels[1]);
 
+      chartScales = resolveChartScales(s.chart_scales);
+
       pushSpark("temp", sparkData.temp,  s.sensors?.temp_c);
       pushSpark("hum",  sparkData.hum,   s.sensors?.hum_rh);
       pushSpark("s1",   sparkData.s1,    s.sensors?.soil1);
       pushSpark("s2",   sparkData.s2,    s.sensors?.soil2);
 
-      drawSpark("#spark-temp", sparkData.temp, accent, { min: 0,  max: 50 });
-      drawSpark("#spark-hum",  sparkData.hum,  muted,  { min: 0,  max: 100 });
+      drawSpark("#spark-temp", sparkData.temp, accent, { min: chartScales.tempMin,  max: chartScales.tempMax });
+      drawSpark("#spark-hum",  sparkData.hum,  muted,  { min: chartScales.humMin,   max: chartScales.humMax });
       drawSpark("#spark-s1",   sparkData.s1,   accent, { min: 0,  max: 100 });
       drawSpark("#spark-s2",   sparkData.s2,   muted,  { min: 0,  max: 100 });
 
@@ -506,8 +549,8 @@
           responsive:true,
           interaction:{ mode:"index", intersect:false },
           scales:{
-            y:{ position:"left",  title:{ display:true, text:"Temperature (°C)" } },
-            y1:{ position:"right", title:{ display:true, text:"Humidity (%)" }, grid:{ drawOnChartArea:false } }
+            y:{ position:"left",  title:{ display:true, text:"Temperature (°C)" }, min: chartScales.tempMin, max: chartScales.tempMax },
+            y1:{ position:"right", title:{ display:true, text:"Humidity (%)" }, grid:{ drawOnChartArea:false }, min: chartScales.humMin, max: chartScales.humMax }
           }
         }
       });
@@ -665,6 +708,8 @@
       renderChamberPreview,
       buildChamberConfirmMessage,
       prepareHistoryDatasets,
+      resolveChartScales,
+      defaultChartScales,
     });
   }
 })();

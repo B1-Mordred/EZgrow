@@ -18,6 +18,22 @@ static bool      sCaptivePortalActive = false;
 static String sWebAuthUser;
 static String sWebAuthPass;
 
+void refreshCaptivePortalState() {
+  bool hasAp        = (WiFi.getMode() & WIFI_MODE_AP);
+  bool staConnected = (WiFi.status() == WL_CONNECTED);
+  bool shouldCaptive = hasAp && !staConnected;
+
+  if (shouldCaptive == sCaptivePortalActive) return;
+
+  sCaptivePortalActive = shouldCaptive;
+  if (sCaptivePortalActive) {
+    IPAddress apIP = WiFi.softAPIP();
+    dnsServer.start(53, "*", apIP);
+  } else {
+    dnsServer.stop();
+  }
+}
+
 // ================= Helpers =================
 
 static String htmlBool(bool b) { return b ? "ON" : "OFF"; }
@@ -596,7 +612,7 @@ static void handleWifiConfigGet() {
   if (!requireAuth()) return;
 
   String storedSsid, storedPass;
-  loadWifiCredentials(storedSsid, storedPass);
+  loadWifiCredentials(storedSsid, storedPass, false);
 
   int n = WiFi.scanNetworks();
 
@@ -832,7 +848,7 @@ static void handleConfigGet() {
   if (!requireAuth()) return;
 
   String storedSsid, storedPass;
-  loadWifiCredentials(storedSsid, storedPass);
+  loadWifiCredentials(storedSsid, storedPass, false);
   int wifiNetworks = WiFi.scanNetworks();
 
   String page;
@@ -1382,16 +1398,7 @@ static void handleNotFound() {
 void initWebServer() {
   loadWebAuthConfig(sWebAuthUser, sWebAuthPass);
 
-  bool hasAp        = (WiFi.getMode() & WIFI_MODE_AP);
-  bool staConnected = (WiFi.status() == WL_CONNECTED);
-
-  if (hasAp && !staConnected) {
-    sCaptivePortalActive = true;
-    IPAddress apIP = WiFi.softAPIP();
-    dnsServer.start(53, "*", apIP);
-  } else {
-    sCaptivePortalActive = false;
-  }
+  refreshCaptivePortalState();
 
   server.on("/",                 HTTP_GET,  handleRoot);
 
@@ -1427,6 +1434,7 @@ void initWebServer() {
 }
 
 void handleWebServer() {
+  refreshCaptivePortalState();
   server.handleClient();
   if (sCaptivePortalActive) {
     dnsServer.processNextRequest();

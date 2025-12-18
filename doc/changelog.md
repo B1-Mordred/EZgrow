@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Documented the dashboard refresh: added EZgrow logo + favicon branding and removed the light history chart from the README.
 - Added a favicon link and refreshed the topbar brand with the EZgrow logo for clearer device identification.
 - Refined topbar brand layout with dedicated logo sizing and typography for clearer alignment between the icon and label.
 - Served the EZgrow logo from LittleFS at `/logo-ezgrow.png` with a dedicated handler and route.

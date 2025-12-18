@@ -171,10 +171,6 @@ static void beginPage(String& page, const char* title, const char* activeNav, bo
     page += "<a href='/config'";
     if (String(activeNav) == "config") page += " class='active'";
     page += ">Config</a>";
-
-    page += "<a href='/wifi'";
-    if (String(activeNav) == "wifi") page += " class='active'";
-    page += ">Wi-Fi</a>";
   } else {
     page += "<a href='/wifi'";
     if (String(activeNav) == "wifi") page += " class='active'";

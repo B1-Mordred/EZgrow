@@ -24,8 +24,8 @@ It displays status on a small **0.91" WE-DA-361 I²C OLED** and exposes a web UI
 - Grow profile tab with preset previews, chamber-targeted apply (Ch1→Light1, Ch2→Light2), plus system tab showing current device time
 - Relay controls that disable while requests are processing, with toast feedback for mode/toggle actions
 - Per-chamber dashboard labeling for soil tiles and light controls, with `/api/status` exposing chamber metadata (including `id` 1/2 and `idx` 0/1) for UI and integrations
-- Refreshed dashboard branding with an EZgrow logo and favicon for quick device identification
-- **Wi-Fi configuration** (scan SSIDs, select, store SSID/password in NVS)
+- Refreshed dashboard branding with an EZgrow logo and favicon for quick device identification, using a natural logo aspect ratio in the top bar
+- **Wi-Fi configuration** (scan SSIDs, select, store SSID/password in NVS) via the `/wifi` onboarding page (captive portal entry point) or the Config Wi-Fi tab
 - **HTTP Basic Authentication** (credentials stored in NVS, configurable in UI)
 - **Captive portal** for Wi-Fi onboarding in AP mode (auto-redirects to `/wifi`)
 
@@ -125,7 +125,7 @@ The device supports:
 
    - `/` : dashboard and charts
    - `/config` : control thresholds, timings, schedules, auth config
-   - `/wifi` : Wi-Fi configuration (scan, select SSID, save)
+   - `/wifi` : Wi-Fi configuration (scan, select SSID, save); also exposed inside `/config` as the Wi-Fi tab, and used as the captive portal entry point
 
    ### 8.2 If connection fails or no SSID configured (AP + Captive Portal)
 
@@ -179,6 +179,7 @@ The device supports:
   - Fan turns ON if temperature ≥ `fanOnTemp` **or** humidity ≥ `fanHumOn`.
   - Fan turns OFF when **both** are back in safe range:
     - temperature ≤ `fanOffTemp` **and** humidity ≤ `fanHumOff`.
+  - Fan activation waits for hot/humid conditions to persist for ~2 minutes before engaging (OFF hysteresis remains unchanged).
 
 - **Pump control** (automatic):
   - Soil moisture-based control using 2 sensors and configurable:
@@ -186,6 +187,7 @@ The device supports:
     - Minimum OFF time (`pumpMinOffSec`).
     - Maximum ON time (`pumpMaxOnSec`).
   - When the pump starts, it records which chambers were below their dry thresholds and only requires those chambers to reach their wet thresholds before shutting off (or when `pumpMaxOnSec` elapses), respecting the minimum OFF interval between cycles.
+  - Pump activation requires ~2 minutes of continuous dryness (in addition to the minimum OFF timer) before starting.
 
 - **Lights**:
   - Each light can run:
@@ -414,8 +416,10 @@ Protected by Basic Auth in STA mode. The page uses tabs:
   - AUTO/MANUAL toggles for the fan and pump.
 - **Grow profile**
   - Select Seedling/Vegetative/Flowering presets and apply them per chamber (Ch1 → Light 1, Ch2 → Light 2) or across both chambers + environment.
-  - Per-chamber apply only adjusts that chamber's soil thresholds and mapped light schedule/auto flag, leaving other chambers and automation settings untouched.
+  - Per-chamber apply updates that chamber's soil thresholds and mapped light schedule/auto flag, and applies preset fan/pump automation defaults when provided (other chamber thresholds stay untouched).
   - Preview table shows preset values before applying.
+- **Wi-Fi**
+  - Mirrors the `/wifi` onboarding page inside `/config`, showing connection status, the SSID/password form, and the scanned network table while keeping `/wifi` as the captive portal entry point.
 - **System**
   - Displays the current device time.
   - Timezone dropdown (UTC, Europe/Berlin, Europe/London, US/Eastern, US/Central, US/Mountain, US/Pacific). Changes apply immediately to NTP/time display.
@@ -431,7 +435,7 @@ On submit:
 
 ### 4.3 Wi-Fi configuration (`/wifi`)
 
-Protected by Basic Auth in STA mode, **open in AP-only mode** (onboarding):
+Protected by Basic Auth in STA mode, **open in AP-only mode** (onboarding). The same UI is available inside `/config` via the Wi-Fi tab for quick adjustments while `/wifi` remains the captive portal entry path:
 
 - **Current connection**:
   - Shows whether the ESP32 is connected and to which SSID.
@@ -465,7 +469,7 @@ On submit:
   - For fan/pump: toggles automatic control logic vs manual relay control.  
   Protected by Basic Auth in STA mode.
 - `GET /api/grow/apply?chamber=0|1|2&profile=0-3` (or `chamber_id=1|2`)  
-  Applies a grow profile to a single chamber (soil thresholds + linked light schedule/auto). Accepts legacy zero-based indexes (`0`/`1`) or chamber IDs (`1`/`2`, with `2` also accepted via `chamber=2`) and responds with both `chamber_idx` and `chamber_id` alongside the applied label and chamber metadata.  
+  Applies a grow profile to a single chamber (soil thresholds + linked light schedule/auto + preset fan/pump automation defaults). Accepts legacy zero-based indexes (`0`/`1`) or chamber IDs (`1`/`2`, with `2` also accepted via `chamber=2`) and responds with both `chamber_idx` and `chamber_id` alongside the applied label and chamber metadata.  
   Protected by Basic Auth in STA mode.
 
 ### 4.5 History API (`/api/history`)
@@ -484,7 +488,7 @@ If `autoFan` is enabled:
 
 - Let `T` = measured temperature, `H` = measured relative humidity.
 - Fan turns **ON** when:
-  - `T ≥ fanOnTemp` **OR** `H ≥ fanHumOn`
+  - `T ≥ fanOnTemp` **OR** `H ≥ fanHumOn` **and** the hot/humid condition persists for at least ~120 seconds.
 - Fan turns **OFF** when:
   - `T ≤ fanOffTemp` **AND** `H ≤ fanHumOff`  
   (or the respective values are unavailable, in which case they are ignored).
@@ -501,7 +505,8 @@ If `autoPump` is enabled:
 - Pump turns **ON** when:
   - Not currently running, AND
   - “Too dry”, AND
-  - At least `pumpMinOffSec` seconds elapsed since the last stop.
+  - At least `pumpMinOffSec` seconds elapsed since the last stop, AND
+  - Dryness persists for ~120 seconds before activation.
 - Pump turns **OFF** when:
   - “Wet enough”, OR
   - Pump has been ON for more than `pumpMaxOnSec` seconds.

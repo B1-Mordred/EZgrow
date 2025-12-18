@@ -70,6 +70,12 @@ static bool          pumpRunning    = false;
 static unsigned long pumpStartMs    = 0;
 static unsigned long lastPumpStopMs = 0;
 static uint8_t       pumpActiveDryMask = 0;
+static unsigned long pumpDryStartMs = 0;
+
+// Automation hold timing
+static const unsigned long FAN_TRIGGER_HOLD_MS  = 120000UL;
+static const unsigned long PUMP_TRIGGER_HOLD_MS = 120000UL;
+static unsigned long fanTriggerStartMs = 0;
 
 // Time state
 static struct tm gTimeInfo;
@@ -557,6 +563,11 @@ bool applyGrowProfileToChamber(int chamberIdx, int profileId, String &appliedNam
   light->offMinutes = chPreset.lightOffMinutes;
   light->enabled    = chPreset.lightAuto;
 
+  if (profileId > 0) {
+    if (p.setAutoFan)  gConfig.autoFan  = p.autoFan;
+    if (p.setAutoPump) gConfig.autoPump = p.autoPump;
+  }
+
   return true;
 }
 
@@ -691,10 +702,19 @@ void updateControlLogic() {
       dry   = ((int)gSensors.humidityRH <= gConfig.env.fanHumOff);
     }
 
+    bool fanHotOrHumid = (haveTemp && hot) || (haveHum && humid);
+
     if (!gRelays.fan) {
       // Turn fan ON if temperature OR humidity exceed ON thresholds
-      if ((haveTemp && hot) || (haveHum && humid)) {
-        gRelays.fan = true;
+      if (fanHotOrHumid) {
+        if (fanTriggerStartMs == 0) {
+          fanTriggerStartMs = nowMs;
+        }
+        if (nowMs - fanTriggerStartMs >= FAN_TRIGGER_HOLD_MS) {
+          gRelays.fan = true;
+        }
+      } else {
+        fanTriggerStartMs = 0;
       }
     } else {
       // Turn fan OFF when BOTH are back in safe range (or missing)
@@ -703,8 +723,11 @@ void updateControlLogic() {
 
       if (tempOk && humOk) {
         gRelays.fan = false;
+        fanTriggerStartMs = 0;
       }
     }
+  } else {
+    fanTriggerStartMs = 0;
   }
 
   // Pump (auto by soil moisture + timing)
@@ -718,7 +741,17 @@ void updateControlLogic() {
       bool tooDry    = chamber1Dry || chamber2Dry;
       bool minOffMet = (nowMs - lastPumpStopMs) > (gConfig.env.pumpMinOffSec * 1000UL);
 
-      if (tooDry && minOffMet) {
+      if (tooDry) {
+        if (pumpDryStartMs == 0) {
+          pumpDryStartMs = nowMs;
+        }
+      } else {
+        pumpDryStartMs = 0;
+      }
+
+      bool holdMet = pumpDryStartMs && (nowMs - pumpDryStartMs >= PUMP_TRIGGER_HOLD_MS);
+
+      if (tooDry && minOffMet && holdMet) {
         pumpRunning      = true;
         pumpStartMs      = nowMs;
         pumpActiveDryMask = 0;
@@ -736,8 +769,11 @@ void updateControlLogic() {
         gRelays.pump      = false;
         lastPumpStopMs    = nowMs;
         pumpActiveDryMask = 0;
+        pumpDryStartMs    = 0;
       }
     }
+  } else {
+    pumpDryStartMs = 0;
   }
 
   syncRelays();

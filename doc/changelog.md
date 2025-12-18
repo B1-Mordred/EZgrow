@@ -1,6 +1,9 @@
 # Changelog
 
 ## Unreleased
+- Added a Wi-Fi tab inside `/config` that reuses the `/wifi` onboarding UI while keeping `/wifi` as the captive portal entry point and simplifying navigation when the captive portal is active.
+- Added 120-second hold timers before fan or pump automation turns on (alongside pump min-off timing) and aligned chamber-only preset apply with preset auto fan/pump defaults.
+- Relaxed topbar logo styling to keep its natural aspect ratio while filling the header height.
 - Documented the dashboard refresh: added EZgrow logo + favicon branding and removed the light history chart from the README.
 - Added a favicon link and refreshed the topbar brand with the EZgrow logo for clearer device identification.
 - Refined topbar brand layout with dedicated logo sizing and typography for clearer alignment between the icon and label.

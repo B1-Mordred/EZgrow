@@ -30,10 +30,16 @@ test('applies brand layout and sizing styles', () => {
   assert.match(appCss, /\.brand\s*{[^}]*display:flex;[^}]*align-items:center;[^}]*gap:12px;[^}]*}/s);
   assert.match(
     appCss,
-    /\.brand-logo\s*{[^}]*display:flex;[^}]*align-items:center;[^}]*justify-content:center;[^}]*width:40px;[^}]*height:40px;[^}]*padding:6px;[^}]*border-radius:12px;[^}]*}/s
+    /\.brand-logo\s*{[^}]*display:block;[^}]*height:34px;[^}]*width:auto;[^}]*object-fit:contain;[^}]*}/s
   );
   assert.match(
     appCss,
     /\.brand-text\s*{[^}]*display:flex;[^}]*flex-direction:column;[^}]*font-weight:900;[^}]*font-size:1\.05rem;[^}]*letter-spacing:\.35px;[^}]*line-height:1\.1;[^}]*}/s
   );
+});
+
+test('includes Wi-Fi tab in config layout', () => {
+  const tabsPattern = /data-tabs='config'[^>]*>.*<button class='tab' type='button' data-tab='wifi'>Wi-Fi<\/button>/s;
+  assert.match(webUiSource, tabsPattern);
+  assert.match(webUiSource, /<div class='tab-panel' data-tab='wifi'>/);
 });

@@ -620,7 +620,8 @@
   }
 
   function initWifi(){
-    if (document.body.dataset.page !== "wifi") return;
+    const page = document.body.dataset.page;
+    if (page !== "wifi" && page !== "config") return;
 
     const ssidInput = $("#ssid");
     $$(".ssid-row").forEach(r => {

@@ -458,6 +458,13 @@ On submit:
 - After a short delay, the device **restarts**.
 - On next boot, the device attempts STA connection using the saved credentials.
 
+Connection behaviour:
+
+- STA connection attempts time out after ~15 seconds to keep the control loop responsive.
+- While disconnected, the controller retries the STA connection roughly once per minute with backoff instead of rapid-fire association attempts.
+- If the device stays offline for a couple of minutes, it automatically re-enables the `EZgrow-Setup` AP + captive portal for onboarding.
+- When STA connectivity is restored, the AP is torn down again and captive-portal-only auth is disabled so Basic Auth is enforced on the LAN.
+
 ### 4.4 Control endpoints
 
 - `GET /toggle?id=light1|light2|fan|pump`  

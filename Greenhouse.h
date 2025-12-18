@@ -167,8 +167,13 @@ void saveWebAuthConfig(const String &user, const String &pass);
 // ========== Wi-Fi credentials storage (NVS) ==========
 
 // Load Wi-Fi credentials from NVS; falls back to compiled defaults if empty.
-// Outputs into ssidOut and passOut.
-void loadWifiCredentials(String &ssidOut, String &passOut);
+// Outputs into ssidOut and passOut. Pass logSsid=false to suppress Serial logging
+// when credentials are fetched for UI rendering.
+void loadWifiCredentials(String &ssidOut, String &passOut, bool logSsid = true);
 
 // Save Wi-Fi credentials to NVS.
 void saveWifiCredentials(const String &ssid, const String &password);
+
+// Retry STA connection with backoff while keeping the main loop responsive.
+// Should be called from loop().
+void updateWifi();

@@ -29,6 +29,10 @@ static const bool RELAY_INACTIVE_LEVEL = HIGH;
 static const char* DEFAULT_WIFI_SSID = "YOUR_SSID";
 static const char* DEFAULT_WIFI_PASS = "YOUR_PASSWORD";
 
+static const unsigned long WIFI_CONNECT_TIMEOUT_MS   = 15000;
+static const unsigned long WIFI_RETRY_INTERVAL_MS    = 60000;
+static const unsigned long WIFI_AP_RESTART_DELAY_MS  = 120000;
+
 static const char* NTP_SERVER1 = "pool.ntp.org";
 static const char* NTP_SERVER2 = "time.nist.gov";
 
@@ -55,6 +59,15 @@ static const size_t TZ_COUNT = sizeof(TZ_OPTIONS) / sizeof(TZ_OPTIONS[0]);
 GreenhouseConfig gConfig;
 SensorState      gSensors;
 RelayState       gRelays;
+
+static String       sWifiSsid;
+static String       sWifiPass;
+static bool         sApStarted             = false;
+static bool         sStaAttemptInProgress  = false;
+static unsigned long sStaAttemptStartMs    = 0;
+static unsigned long sLastStaAttemptMs     = 0;
+static unsigned long sDisconnectedSinceMs  = 0;
+static wl_status_t   sLastWifiStatus       = WL_DISCONNECTED;
 
 HistorySample gHistoryBuf[HISTORY_SIZE];
 size_t        gHistoryIndex = 0;
@@ -217,7 +230,7 @@ size_t greenhouseTimezoneCount() {
 
 // ================= Wi-Fi credentials (NVS) =================
 
-void loadWifiCredentials(String &ssidOut, String &passOut) {
+void loadWifiCredentials(String &ssidOut, String &passOut, bool logSsid) {
   ssidOut = "";
   passOut = "";
 
@@ -237,8 +250,10 @@ void loadWifiCredentials(String &ssidOut, String &passOut) {
     passOut = DEFAULT_WIFI_PASS ? DEFAULT_WIFI_PASS : "";
   }
 
-  Serial.print("[WiFiCFG] Using SSID: ");
-  Serial.println(ssidOut);
+  if (logSsid) {
+    Serial.print("[WiFiCFG] Using SSID: ");
+    Serial.println(ssidOut);
+  }
 }
 
 void saveWifiCredentials(const String &ssid, const String &password) {
@@ -899,6 +914,80 @@ void logHistorySample() {
 
 // ================= Hardware init (with AP fallback) =================
 
+static void showStaIpOnDisplay() {
+  u8g2.clearBuffer();
+  u8g2.setCursor(0, 10);
+  u8g2.print("IP:");
+  u8g2.setCursor(0, 20);
+  u8g2.print(WiFi.localIP().toString().c_str());
+  u8g2.sendBuffer();
+  delay(2000);
+}
+
+static void showApOnDisplay(const char* apSsid, const IPAddress& apIP) {
+  u8g2.clearBuffer();
+  u8g2.setCursor(0, 10);
+  u8g2.print("AP:");
+  u8g2.setCursor(0, 20);
+  u8g2.print(apSsid);
+  u8g2.setCursor(0, 30);
+  u8g2.print(apIP.toString().c_str());
+  u8g2.sendBuffer();
+  delay(2000);
+}
+
+static void startApFallback() {
+  if (sApStarted) return;
+
+  const char* apSsid = "EZgrow-Setup";
+  const char* apPass = ""; // open AP; set a password if you prefer
+
+  WiFi.mode(WIFI_AP_STA);
+
+  bool apRes;
+  if (strlen(apPass) > 0) {
+    apRes = WiFi.softAP(apSsid, apPass);
+  } else {
+    apRes = WiFi.softAP(apSsid);
+  }
+
+  if (apRes) {
+    sApStarted = true;
+    IPAddress apIP = WiFi.softAPIP();
+    Serial.print("[WiFi] AP started: ");
+    Serial.print(apSsid);
+    Serial.print(" IP=");
+    Serial.println(apIP);
+    showApOnDisplay(apSsid, apIP);
+  } else {
+    Serial.println("[WiFi] AP start failed");
+    u8g2.clearBuffer();
+    u8g2.setCursor(0, 10);
+    u8g2.print("WiFi/AP failed");
+    u8g2.sendBuffer();
+    delay(2000);
+  }
+}
+
+static void startStaConnect(const char* reason = nullptr) {
+  if (sWifiSsid.isEmpty()) {
+    Serial.println("[WiFi] No SSID configured");
+    return;
+  }
+  if (sStaAttemptInProgress) return;
+
+  Serial.print("[WiFi] Connecting to ");
+  Serial.println(sWifiSsid);
+  if (reason && strlen(reason) > 0) {
+    Serial.print("[WiFi] Reason: ");
+    Serial.println(reason);
+  }
+  WiFi.begin(sWifiSsid.c_str(), sWifiPass.c_str());
+  sStaAttemptInProgress = true;
+  sStaAttemptStartMs    = millis();
+  sLastStaAttemptMs     = sStaAttemptStartMs;
+}
+
 void initHardware() {
   // GPIO
   pinMode(RELAY_LIGHT1_PIN, OUTPUT);
@@ -939,85 +1028,108 @@ void initHardware() {
 
   // Wi-Fi credentials from NVS (or defaults)
   String ssid, pass;
-  loadWifiCredentials(ssid, pass);
+  loadWifiCredentials(ssid, pass, true);
+  sWifiSsid = ssid;
+  sWifiPass = pass;
 
   // Wi-Fi AP+STA mode for AP fallback
   WiFi.mode(WIFI_AP_STA);
+  WiFi.setAutoReconnect(false);
 
   bool staConnected = false;
 
   if (!ssid.isEmpty()) {
-    Serial.print("[WiFi] Connecting to ");
-    Serial.println(ssid);
-    WiFi.begin(ssid.c_str(), pass.c_str());
+    startStaConnect("boot");
 
-    unsigned long start = millis();
     Serial.print("[WiFi] Connecting");
-    while (WiFi.status() != WL_CONNECTED && (millis() - start) < 15000) {
+    while (sStaAttemptInProgress && (millis() - sStaAttemptStartMs) < WIFI_CONNECT_TIMEOUT_MS) {
+      if (WiFi.status() == WL_CONNECTED) {
+        break;
+      }
       delay(500);
       Serial.print(".");
     }
     Serial.println();
 
     if (WiFi.status() == WL_CONNECTED) {
-      staConnected = true;
+      staConnected        = true;
+      sStaAttemptInProgress = false;
+      sLastWifiStatus     = WL_CONNECTED;
+      sDisconnectedSinceMs = 0;
       Serial.print("[WiFi] Connected, IP: ");
       Serial.println(WiFi.localIP());
     } else {
       Serial.println("[WiFi] STA connect failed");
+      sStaAttemptInProgress = false;
+      sLastWifiStatus = WiFi.status();
     }
   } else {
     Serial.println("[WiFi] No SSID configured");
+    sLastWifiStatus = WL_DISCONNECTED;
   }
 
   if (!staConnected) {
-    // Start configuration AP
-    const char* apSsid = "EZgrow-Setup";
-    const char* apPass = ""; // open AP; set a password if you prefer
-
-    bool apRes;
-    if (strlen(apPass) > 0) {
-      apRes = WiFi.softAP(apSsid, apPass);
-    } else {
-      apRes = WiFi.softAP(apSsid);
-    }
-
-    if (apRes) {
-      IPAddress apIP = WiFi.softAPIP();
-      Serial.print("[WiFi] AP started: ");
-      Serial.print(apSsid);
-      Serial.print(" IP=");
-      Serial.println(apIP);
-
-      u8g2.clearBuffer();
-      u8g2.setCursor(0, 10);
-      u8g2.print("AP:");
-      u8g2.setCursor(0, 20);
-      u8g2.print(apSsid);
-      u8g2.setCursor(0, 30);
-      u8g2.print(apIP.toString().c_str());
-      u8g2.sendBuffer();
-      delay(2000);
-    } else {
-      Serial.println("[WiFi] AP start failed");
-      u8g2.clearBuffer();
-      u8g2.setCursor(0, 10);
-      u8g2.print("WiFi/AP failed");
-      u8g2.sendBuffer();
-      delay(2000);
-    }
+    startApFallback();
   } else {
-    // Show STA IP on display
-    u8g2.clearBuffer();
-    u8g2.setCursor(0, 10);
-    u8g2.print("IP:");
-    u8g2.setCursor(0, 20);
-    u8g2.print(WiFi.localIP().toString().c_str());
-    u8g2.sendBuffer();
-    delay(2000);
+    showStaIpOnDisplay();
   }
 
   // NTP / time zone
   applyTimezoneFromConfig();
   configTime(0, 0, NTP_SERVER1, NTP_SERVER2);
+}
+
+void updateWifi() {
+  unsigned long now = millis();
+  wl_status_t status = WiFi.status();
+  bool wasConnected = (sLastWifiStatus == WL_CONNECTED);
+  bool isConnected  = (status == WL_CONNECTED);
+
+  if (isConnected && !wasConnected) {
+    Serial.print("[WiFi] Connected, IP: ");
+    Serial.println(WiFi.localIP());
+    sDisconnectedSinceMs = 0;
+    sStaAttemptInProgress = false;
+    sLastStaAttemptMs = now;
+
+    if (sApStarted) {
+      WiFi.softAPdisconnect(false);
+      WiFi.mode(WIFI_STA);
+      sApStarted = false;
+    }
+  }
+
+  if (isConnected) {
+    sLastWifiStatus = status;
+    return;
+  }
+
+  if (wasConnected && sDisconnectedSinceMs == 0) {
+    sDisconnectedSinceMs = now;
+    Serial.println("[WiFi] Disconnected, retrying soon");
+  } else if (sDisconnectedSinceMs == 0) {
+    sDisconnectedSinceMs = now;
+  }
+
+  sLastWifiStatus = status;
+
+  if (sStaAttemptInProgress) {
+    if ((now - sStaAttemptStartMs) >= WIFI_CONNECT_TIMEOUT_MS) {
+      Serial.println("[WiFi] STA connect timeout; will retry after backoff");
+      WiFi.disconnect(false, false);
+      sStaAttemptInProgress = false;
+      sLastStaAttemptMs     = now;
+    }
+    return;
+  }
+
+  if (!sWifiSsid.length()) return;
+
+  if (!sApStarted && sDisconnectedSinceMs && (now - sDisconnectedSinceMs) >= WIFI_AP_RESTART_DELAY_MS) {
+    startApFallback();
+  }
+
+  if ((now - sLastStaAttemptMs) < WIFI_RETRY_INTERVAL_MS) return;
+
+  startStaConnect("retry");
 }

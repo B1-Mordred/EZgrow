@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+- Added editable grow profile presets (labels, soil thresholds, light schedules, automation defaults) stored in NVS via the Config → Grow profile tab.
+- Surfaced applied grow profile labels per chamber on the dashboard by extending `/api/status` with `profile_id`/`profile_label` and rendering them alongside light controls.
 - Switched history logging to 10-minute samples with 7-day retention, averaging all readings per window, added 1–7 day range selection (with persistence) to `/api/history` and the dashboard charts, and based automation thresholds on 1-minute averaged sensor data.
 - Restyled the topbar with the dark theme background, an accent divider, and simplified header navigation to Dashboard/Config after moving Wi‑Fi under Config.
 - Added a System-tab reboot control that posts to `/api/reboot`, audits the requester, responds before restarting, and surfaces confirmation/toast feedback in the UI.

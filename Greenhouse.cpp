@@ -578,23 +578,35 @@ void saveConfig() {
   prefs.end();
 }
 
+struct GrowChamberPreset {
+  int soilDry;
+  int soilWet;
+  int lightOnMinutes;
+  int lightOffMinutes;
+  bool lightAuto;
+};
+
 struct GrowProfilePreset {
   const char* label;
   EnvConfig   env;
-  struct ChamberProfilePreset {
-    int soilDry;
-    int soilWet;
-    int lightOnMinutes;
-    int lightOffMinutes;
-    bool lightAuto;
-  } chambers[2];
+  GrowChamberPreset chambers[2];
   bool setAutoFan;
   bool setAutoPump;
   bool autoFan;
   bool autoPump;
 };
 
-static const GrowProfilePreset kGrowProfiles[] = {
+struct GrowProfileData {
+  String label;
+  EnvConfig   env;
+  GrowChamberPreset chambers[2];
+  bool setAutoFan;
+  bool setAutoPump;
+  bool autoFan;
+  bool autoPump;
+};
+
+static const GrowProfilePreset kDefaultGrowProfiles[] = {
   { "Custom",
     { 0, 0, 0, 0, 0, 0 },
     {
@@ -629,30 +641,215 @@ static const GrowProfilePreset kGrowProfiles[] = {
   },
 };
 
-static GrowProfileInfo profileInfoFromPreset(const GrowProfilePreset &p){
-  GrowProfileInfo info;
-  info.label = p.label;
-  info.env   = p.env;
-  info.light1 = { p.chambers[0].lightOnMinutes, p.chambers[0].lightOffMinutes, p.chambers[0].lightAuto };
-  info.light2 = { p.chambers[1].lightOnMinutes, p.chambers[1].lightOffMinutes, p.chambers[1].lightAuto };
-  info.autoFan = p.autoFan;
-  info.autoPump = p.autoPump;
-  info.setsAutoFan = p.setAutoFan;
-  info.setsAutoPump = p.setAutoPump;
-  info.chamber1 = { String(DEFAULT_CHAMBER1_NAME), p.chambers[0].soilDry, p.chambers[0].soilWet, -1 };
-  info.chamber2 = { String(DEFAULT_CHAMBER2_NAME), p.chambers[1].soilDry, p.chambers[1].soilWet, -1 };
-  return info;
+static const size_t kGrowProfileCount = sizeof(kDefaultGrowProfiles) / sizeof(kDefaultGrowProfiles[0]);
+static GrowProfileData gGrowProfiles[kGrowProfileCount];
+
+static GrowProfileData profileDataFromPreset(const GrowProfilePreset &p){
+  GrowProfileData data;
+  data.label = p.label;
+  data.env   = p.env;
+  data.chambers[0] = p.chambers[0];
+  data.chambers[1] = p.chambers[1];
+  data.setAutoFan  = p.setAutoFan;
+  data.setAutoPump = p.setAutoPump;
+  data.autoFan  = p.autoFan;
+  data.autoPump = p.autoPump;
+  return data;
+}
+
+static void resetGrowProfilesToDefaults(){
+  for (size_t i = 0; i < kGrowProfileCount; i++) {
+    gGrowProfiles[i] = profileDataFromPreset(kDefaultGrowProfiles[i]);
+  }
+}
+
+static String sanitizeProfileLabel(const String &raw, size_t idx){
+  String label = raw;
+  label.trim();
+  if (label.length() > 24) label = label.substring(0, 24);
+  if (label.length() == 0) {
+    label = String(kDefaultGrowProfiles[idx].label);
+  }
+  return label;
+}
+
+static int clampMinutesSafe(int v){
+  if (v < 0) return 0;
+  if (v >= 24 * 60) return 24 * 60 - 1;
+  return v;
+}
+
+static void sanitizeGrowProfile(GrowProfileData &p, size_t idx){
+  const bool isCustom = (idx == 0);
+  const GrowProfilePreset &fallback = kDefaultGrowProfiles[idx];
+
+  auto clampFloat = [](float v, float lo, float hi) {
+    if (v < lo) return lo;
+    if (v > hi) return hi;
+    return v;
+  };
+
+  auto clampUL = [](unsigned long v, unsigned long lo, unsigned long hi) {
+    if (v < lo) return lo;
+    if (v > hi) return hi;
+    return v;
+  };
+
+  p.label = sanitizeProfileLabel(p.label, idx);
+
+  for (size_t c = 0; c < 2; c++) {
+    GrowChamberPreset &ch = p.chambers[c];
+    const GrowChamberPreset &fb = fallback.chambers[c];
+    ch.soilDry = constrain(ch.soilDry, 0, 100);
+    ch.soilWet = constrain(ch.soilWet, 0, 100);
+    if (ch.soilWet <= ch.soilDry) {
+      ch.soilDry = fb.soilDry;
+      ch.soilWet = fb.soilWet;
+    }
+    ch.lightOnMinutes  = clampMinutesSafe(ch.lightOnMinutes);
+    ch.lightOffMinutes = clampMinutesSafe(ch.lightOffMinutes);
+  }
+
+  p.env.fanOnTemp     = clampFloat(p.env.fanOnTemp,  -40.0f, 120.0f);
+  p.env.fanOffTemp    = clampFloat(p.env.fanOffTemp, -40.0f, 120.0f);
+  p.env.fanHumOn      = constrain(p.env.fanHumOn,  0, 100);
+  p.env.fanHumOff     = constrain(p.env.fanHumOff, 0, 100);
+  p.env.pumpMinOffSec = clampUL(p.env.pumpMinOffSec, 10, 36000);
+  p.env.pumpMaxOnSec  = clampUL(p.env.pumpMaxOnSec,   5, 3600);
+
+  if (!isCustom) {
+    if (p.env.fanOffTemp >= p.env.fanOnTemp) {
+      p.env.fanOnTemp  = fallback.env.fanOnTemp;
+      p.env.fanOffTemp = fallback.env.fanOffTemp;
+    }
+    if (p.env.fanHumOff >= p.env.fanHumOn) {
+      p.env.fanHumOn  = fallback.env.fanHumOn;
+      p.env.fanHumOff = fallback.env.fanHumOff;
+    }
+    if (p.env.pumpMaxOnSec <= 5 || p.env.pumpMinOffSec <= 10) {
+      p.env.pumpMinOffSec = fallback.env.pumpMinOffSec;
+      p.env.pumpMaxOnSec  = fallback.env.pumpMaxOnSec;
+    }
+  }
+}
+
+static String profilePrefKey(size_t idx, const char* suffix){
+  String key = "p";
+  key += String(idx);
+  key += "_";
+  key += suffix;
+  return key;
+}
+
+static void loadGrowProfiles(){
+  resetGrowProfilesToDefaults();
+
+  if (!prefs.begin("gh_profiles", true)) {
+    Serial.println("[CFG] Preferences begin failed for grow profiles; using defaults");
+    return;
+  }
+
+  for (size_t i = 0; i < kGrowProfileCount; i++) {
+    GrowProfileData data = gGrowProfiles[i];
+
+    data.label = sanitizeProfileLabel(prefs.getString(profilePrefKey(i, "label").c_str(), data.label), i);
+
+    data.chambers[0].soilDry       = prefs.getInt  (profilePrefKey(i, "c1Dry").c_str(), data.chambers[0].soilDry);
+    data.chambers[0].soilWet       = prefs.getInt  (profilePrefKey(i, "c1Wet").c_str(), data.chambers[0].soilWet);
+    data.chambers[0].lightOnMinutes  = prefs.getInt(profilePrefKey(i, "l1On").c_str(),  data.chambers[0].lightOnMinutes);
+    data.chambers[0].lightOffMinutes = prefs.getInt(profilePrefKey(i, "l1Off").c_str(), data.chambers[0].lightOffMinutes);
+    data.chambers[0].lightAuto     = prefs.getBool (profilePrefKey(i, "l1Auto").c_str(), data.chambers[0].lightAuto);
+
+    data.chambers[1].soilDry       = prefs.getInt  (profilePrefKey(i, "c2Dry").c_str(), data.chambers[1].soilDry);
+    data.chambers[1].soilWet       = prefs.getInt  (profilePrefKey(i, "c2Wet").c_str(), data.chambers[1].soilWet);
+    data.chambers[1].lightOnMinutes  = prefs.getInt(profilePrefKey(i, "l2On").c_str(),  data.chambers[1].lightOnMinutes);
+    data.chambers[1].lightOffMinutes = prefs.getInt(profilePrefKey(i, "l2Off").c_str(), data.chambers[1].lightOffMinutes);
+    data.chambers[1].lightAuto     = prefs.getBool (profilePrefKey(i, "l2Auto").c_str(), data.chambers[1].lightAuto);
+
+    data.env.fanOnTemp     = prefs.getFloat(profilePrefKey(i, "envFanOn").c_str(),  data.env.fanOnTemp);
+    data.env.fanOffTemp    = prefs.getFloat(profilePrefKey(i, "envFanOff").c_str(), data.env.fanOffTemp);
+    data.env.fanHumOn      = prefs.getInt  (profilePrefKey(i, "envHumOn").c_str(),  data.env.fanHumOn);
+    data.env.fanHumOff     = prefs.getInt  (profilePrefKey(i, "envHumOff").c_str(), data.env.fanHumOff);
+    data.env.pumpMinOffSec = prefs.getULong(profilePrefKey(i, "pumpOff").c_str(),   data.env.pumpMinOffSec);
+    data.env.pumpMaxOnSec  = prefs.getULong(profilePrefKey(i, "pumpOn").c_str(),    data.env.pumpMaxOnSec);
+
+    data.setAutoFan  = prefs.getBool(profilePrefKey(i, "setAutoFan").c_str(),  data.setAutoFan);
+    data.setAutoPump = prefs.getBool(profilePrefKey(i, "setAutoPump").c_str(), data.setAutoPump);
+    data.autoFan     = prefs.getBool(profilePrefKey(i, "autoFan").c_str(),     data.autoFan);
+    data.autoPump    = prefs.getBool(profilePrefKey(i, "autoPump").c_str(),    data.autoPump);
+
+    sanitizeGrowProfile(data, i);
+    gGrowProfiles[i] = data;
+  }
+
+  prefs.end();
+}
+
+static void saveGrowProfiles(){
+  if (!prefs.begin("gh_profiles", false)) {
+    Serial.println("[CFG] Preferences begin failed (grow profiles)");
+    return;
+  }
+
+  for (size_t i = 0; i < kGrowProfileCount; i++) {
+    const GrowProfileData &p = gGrowProfiles[i];
+    prefs.putString(profilePrefKey(i, "label").c_str(), p.label);
+
+    prefs.putInt  (profilePrefKey(i, "c1Dry").c_str(),  p.chambers[0].soilDry);
+    prefs.putInt  (profilePrefKey(i, "c1Wet").c_str(),  p.chambers[0].soilWet);
+    prefs.putInt  (profilePrefKey(i, "l1On").c_str(),   p.chambers[0].lightOnMinutes);
+    prefs.putInt  (profilePrefKey(i, "l1Off").c_str(),  p.chambers[0].lightOffMinutes);
+    prefs.putBool (profilePrefKey(i, "l1Auto").c_str(), p.chambers[0].lightAuto);
+
+    prefs.putInt  (profilePrefKey(i, "c2Dry").c_str(),  p.chambers[1].soilDry);
+    prefs.putInt  (profilePrefKey(i, "c2Wet").c_str(),  p.chambers[1].soilWet);
+    prefs.putInt  (profilePrefKey(i, "l2On").c_str(),   p.chambers[1].lightOnMinutes);
+    prefs.putInt  (profilePrefKey(i, "l2Off").c_str(),  p.chambers[1].lightOffMinutes);
+    prefs.putBool (profilePrefKey(i, "l2Auto").c_str(), p.chambers[1].lightAuto);
+
+    prefs.putFloat(profilePrefKey(i, "envFanOn").c_str(),  p.env.fanOnTemp);
+    prefs.putFloat(profilePrefKey(i, "envFanOff").c_str(), p.env.fanOffTemp);
+    prefs.putInt  (profilePrefKey(i, "envHumOn").c_str(),  p.env.fanHumOn);
+    prefs.putInt  (profilePrefKey(i, "envHumOff").c_str(), p.env.fanHumOff);
+    prefs.putULong(profilePrefKey(i, "pumpOff").c_str(),   p.env.pumpMinOffSec);
+    prefs.putULong(profilePrefKey(i, "pumpOn").c_str(),    p.env.pumpMaxOnSec);
+
+    prefs.putBool(profilePrefKey(i, "setAutoFan").c_str(),  p.setAutoFan);
+    prefs.putBool(profilePrefKey(i, "setAutoPump").c_str(), p.setAutoPump);
+    prefs.putBool(profilePrefKey(i, "autoFan").c_str(),     p.autoFan);
+    prefs.putBool(profilePrefKey(i, "autoPump").c_str(),    p.autoPump);
+  }
+
+  prefs.end();
+}
+
+bool getGrowProfile(size_t idx, GrowProfileData &outProfile) {
+  if (idx >= kGrowProfileCount) return false;
+  outProfile = gGrowProfiles[idx];
+  return true;
+}
+
+bool updateGrowProfile(size_t idx, const GrowProfileData &data) {
+  if (idx >= kGrowProfileCount) return false;
+  GrowProfileData sanitized = data;
+  sanitizeGrowProfile(sanitized, idx);
+  gGrowProfiles[idx] = sanitized;
+  return true;
+}
+
+void persistGrowProfiles() {
+  saveGrowProfiles();
 }
 
 bool applyGrowProfileToChamber(int chamberIdx, int profileId, String &appliedName) {
-  if (profileId < 0 || (size_t)profileId >= (sizeof(kGrowProfiles)/sizeof(kGrowProfiles[0]))) {
+  if (profileId < 0 || (size_t)profileId >= kGrowProfileCount) {
     return false;
   }
   if (chamberIdx < 0 || chamberIdx > 1) {
     return false;
   }
 
-  const GrowProfilePreset &p = kGrowProfiles[profileId];
+  const GrowProfileData &p = gGrowProfiles[profileId];
   appliedName = p.label;
   if (profileId == 0) {
     return true; // Custom: no changes
@@ -660,31 +857,29 @@ bool applyGrowProfileToChamber(int chamberIdx, int profileId, String &appliedNam
 
   ChamberConfig* chamber = (chamberIdx == 0) ? &gConfig.chamber1 : &gConfig.chamber2;
   LightSchedule* light   = (chamberIdx == 0) ? &gConfig.light1   : &gConfig.light2;
-  const GrowProfilePreset::ChamberProfilePreset &chPreset = p.chambers[chamberIdx];
+  const GrowChamberPreset &chPreset = p.chambers[chamberIdx];
 
   chamber->soilDryThreshold = chPreset.soilDry;
   chamber->soilWetThreshold = chPreset.soilWet;
-  chamber->profileId = (profileId > 0) ? profileId : -1;
+  chamber->profileId = profileId;
   normalizeChamberConfig(*chamber, chamberIdx == 0 ? DEFAULT_CHAMBER1_NAME : DEFAULT_CHAMBER2_NAME);
 
   light->onMinutes  = chPreset.lightOnMinutes;
   light->offMinutes = chPreset.lightOffMinutes;
   light->enabled    = chPreset.lightAuto;
 
-  if (profileId > 0) {
-    if (p.setAutoFan)  gConfig.autoFan  = p.autoFan;
-    if (p.setAutoPump) gConfig.autoPump = p.autoPump;
-  }
+  if (p.setAutoFan)  gConfig.autoFan  = p.autoFan;
+  if (p.setAutoPump) gConfig.autoPump = p.autoPump;
 
   return true;
 }
 
 bool applyGrowProfile(int profileId, String &appliedName) {
-  if (profileId < 0 || (size_t)profileId >= (sizeof(kGrowProfiles)/sizeof(kGrowProfiles[0]))) {
+  if (profileId < 0 || (size_t)profileId >= kGrowProfileCount) {
     return false;
   }
 
-  const GrowProfilePreset &p = kGrowProfiles[profileId];
+  const GrowProfileData &p = gGrowProfiles[profileId];
   if (profileId == 0) {
     appliedName = p.label;
     return true; // Custom: no changes
@@ -704,19 +899,28 @@ bool applyGrowProfile(int profileId, String &appliedName) {
 }
 
 size_t growProfileCount(){
-  return sizeof(kGrowProfiles) / sizeof(kGrowProfiles[0]);
+  return kGrowProfileCount;
+}
+
+static GrowProfileInfo profileInfoFromData(const GrowProfileData &p){
+  GrowProfileInfo info;
+  info.label = p.label;
+  info.env   = p.env;
+  info.light1 = { p.chambers[0].lightOnMinutes, p.chambers[0].lightOffMinutes, p.chambers[0].lightAuto };
+  info.light2 = { p.chambers[1].lightOnMinutes, p.chambers[1].lightOffMinutes, p.chambers[1].lightAuto };
+  info.autoFan = p.autoFan;
+  info.autoPump = p.autoPump;
+  info.setsAutoFan = p.setAutoFan;
+  info.setsAutoPump = p.setAutoPump;
+  info.chamber1 = { String(DEFAULT_CHAMBER1_NAME), p.chambers[0].soilDry, p.chambers[0].soilWet, -1 };
+  info.chamber2 = { String(DEFAULT_CHAMBER2_NAME), p.chambers[1].soilDry, p.chambers[1].soilWet, -1 };
+  return info;
 }
 
 const GrowProfileInfo* growProfileInfoAt(size_t idx){
-  static GrowProfileInfo infos[sizeof(kGrowProfiles) / sizeof(kGrowProfiles[0])];
-  static bool initialized = false;
-  if (!initialized){
-    for (size_t i = 0; i < sizeof(kGrowProfiles) / sizeof(kGrowProfiles[0]); i++) {
-      infos[i] = profileInfoFromPreset(kGrowProfiles[i]);
-    }
-    initialized = true;
-  }
-  if (idx >= (sizeof(kGrowProfiles) / sizeof(kGrowProfiles[0]))) return nullptr;
+  static GrowProfileInfo infos[kGrowProfileCount];
+  if (idx >= kGrowProfileCount) return nullptr;
+  infos[idx] = profileInfoFromData(gGrowProfiles[idx]);
   return &infos[idx];
 }
 
@@ -1081,6 +1285,7 @@ void initHardware() {
 
   // Config
   loadConfig();
+  loadGrowProfiles();
 
   // I2C
   Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);

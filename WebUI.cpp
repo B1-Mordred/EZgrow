@@ -113,6 +113,13 @@ static String jsonEscape(const String& in) {
   return s;
 }
 
+static String growProfileLabelForId(int id) {
+  if (id < 0) return String("");
+  const GrowProfileInfo* info = growProfileInfoAt((size_t)id);
+  if (!info) return String("");
+  return info->label;
+}
+
 // In AP-only (captive portal) mode, we skip authentication so onboarding is open.
 // In STA mode, all protected endpoints require Basic Auth, unless username is empty.
 static bool requireAuth() {
@@ -160,7 +167,7 @@ static void beginPage(String& page, const char* title, const char* activeNav, bo
 
   // Top bar
   page += "<div class='topbar'><div class='topbar-inner'>";
-  page += "<div class='brand'><img src='/logo-ezgrow.png' class='brand-logo' alt='EZgrow logo'><span class='brand-text'></span></div>";
+  page += "<div class='brand'><img src='/logo-ezgrow.png' class='brand-logo' alt='EZgrow logo'><span class='brand-text'>EZgrow</span></div>";
 
   page += "<div class='nav'>";
   if (!sCaptivePortalActive) {
@@ -346,6 +353,8 @@ static void handleStatusApi() {
     json += ",\"soil\":" + String(soilPercent);
     json += ",\"soil_dry_threshold\":" + String(cfg.soilDryThreshold);
     json += ",\"soil_wet_threshold\":" + String(cfg.soilWetThreshold);
+    json += ",\"profile_id\":" + String(cfg.profileId);
+    json += ",\"profile_label\":\"" + jsonEscape(growProfileLabelForId(cfg.profileId)) + "\"";
     json += ",\"light_relay_id\":\"" + jsonEscape(lightId) + "\"}";
   };
   chamberJson(0, gConfig.chamber1, gSensors.soil1Percent, "light1");
@@ -473,6 +482,11 @@ static void handleApplyProfileChamberApi() {
 
   saveConfig();
 
+  Serial.print("[AUDIT] Grow profile applied to chamber ");
+  Serial.print(chamberId);
+  Serial.print(": ");
+  Serial.println(appliedName);
+
   ChamberConfig &cfg = (chamberIdx == 0) ? gConfig.chamber1 : gConfig.chamber2;
   const char* fallback = (chamberIdx == 0) ? DEFAULT_CHAMBER1_NAME : DEFAULT_CHAMBER2_NAME;
   const String chamberName = cfg.name.length() ? cfg.name : String(fallback);
@@ -504,6 +518,9 @@ static void handleApplyProfileAllApi() {
   }
 
   saveConfig();
+
+  Serial.print("[AUDIT] Grow profile applied to all chambers: ");
+  Serial.println(appliedName);
 
   String json = "{";
   json += "\"ok\":true,";
@@ -746,7 +763,7 @@ static void handleRoot() {
   page += "<h2>Controls</h2>";
   page += "<div class='controls'>";
 
-  auto control = [&](const char* id, const char* label, const String& chamberName, bool isAuto, bool isOn, const String& schedule) {
+  auto control = [&](const char* id, const char* label, const String& chamberName, bool isAuto, bool isOn, const String& schedule, const char* profileTarget = nullptr) {
     page += "<div class='card' style='box-shadow:none'>";
     page += "<div class='control-head'>";
     page += "<div><div class='control-title'>" + String(label);
@@ -791,13 +808,19 @@ static void handleRoot() {
     page += htmlEscape(schedule);
     page += "</span>";
 
-    page += "</div></div>";
+    page += "</div>";
+    if (profileTarget) {
+      page += "<div class='meta profile-label' id='profile-";
+      page += profileTarget;
+      page += "'>Profile: —</div>";
+    }
+    page += "</div>";
   };
 
   control("light1", "Light 1", gConfig.chamber1.name, gConfig.light1.enabled, gRelays.light1,
-          minutesToTimeStrSafe(gConfig.light1.onMinutes) + "–" + minutesToTimeStrSafe(gConfig.light1.offMinutes));
+          minutesToTimeStrSafe(gConfig.light1.onMinutes) + "–" + minutesToTimeStrSafe(gConfig.light1.offMinutes), "ch1");
   control("light2", "Light 2", gConfig.chamber2.name, gConfig.light2.enabled, gRelays.light2,
-          minutesToTimeStrSafe(gConfig.light2.onMinutes) + "–" + minutesToTimeStrSafe(gConfig.light2.offMinutes));
+          minutesToTimeStrSafe(gConfig.light2.onMinutes) + "–" + minutesToTimeStrSafe(gConfig.light2.offMinutes), "ch2");
   control("fan", "Fan", "", gConfig.autoFan, gRelays.fan, "threshold-based");
   control("pump", "Pump", "", gConfig.autoPump, gRelays.pump, "soil-based");
 
@@ -1033,16 +1056,6 @@ static void handleConfigGet() {
   page += "<div class='tab-panel' data-tab='profile'>";
   page += "<div class='sub'>Grow profiles are presets for soil thresholds, light schedule and automation (fan/pump). Applying a preset updates the configuration and enables AUTO modes where defined.</div>";
 
-  auto profileLabelForId = [](int id) -> String {
-    if (id < 0) return String("");
-    for (size_t i = 0; i < growProfileCount(); i++) {
-      const GrowProfileInfo* info = growProfileInfoAt(i);
-      if (!info) continue;
-      if ((int)i == id) return String(info->label);
-    }
-    return String("");
-  };
-
   auto profileOptions = [](int selectedId) -> String {
     auto profileDataAttrs = [](const GrowProfileInfo* info) -> String {
       if (!info) return String("");
@@ -1088,7 +1101,7 @@ static void handleConfigGet() {
   auto chamberProfileRow = [&](int idx, const ChamberConfig& cfg, int selectedId) {
     const char* fallback = (idx == 0) ? DEFAULT_CHAMBER1_NAME : DEFAULT_CHAMBER2_NAME;
     const String chamberName = cfg.name.length() ? cfg.name : String(fallback);
-    const String activeProfile = profileLabelForId(cfg.profileId);
+    const String activeProfile = growProfileLabelForId(cfg.profileId);
     const bool lightAuto = (idx == 0) ? gConfig.light1.enabled : gConfig.light2.enabled;
     auto modePill = [](const char* label, bool isAuto) -> String {
       String pill = "<span class='mode-pill ";
@@ -1179,6 +1192,55 @@ static void handleConfigGet() {
     page += "</div></td></tr>";
   }
   page += "</table>";
+  page += "<div class='sub' style='margin-top:14px'>Edit grow profile presets</div>";
+  for (size_t i = 1; i < growProfileCount(); i++) {
+    const GrowProfileInfo* info = growProfileInfoAt(i);
+    if (!info) continue;
+    const String idxStr = String(i);
+    page += "<div class='grow-card' data-profile-edit='" + idxStr + "'>";
+    page += "<div class='grow-card-head'>";
+    page += "<div><div class='eyebrow'>Preset</div><div class='grow-card-title'>" + htmlEscape(info->label) + "</div><div class='sub'>Update the values used when applying this preset.</div></div>";
+    page += "<div class='mode-pill-row'><span class='mode-pill mode-auto'>" + htmlEscape(info->label) + "</span></div>";
+    page += "</div>";
+    page += "<div class='form-grid'>";
+    page += "<div class='field'><label>Preset label</label><input type='text' name='gp" + idxStr + "_label' maxlength='24' value='" + htmlEscape(info->label) + "'><div class='small'>Shown in selectors and dashboard.</div></div>";
+    page += "<div class='field'><label>Ch1 DRY (%)</label><input type='number' step='1' name='gp" + idxStr + "_c1_dry' value='" + String(info->chamber1.soilDryThreshold) + "'></div>";
+    page += "<div class='field'><label>Ch1 WET (%)</label><input type='number' step='1' name='gp" + idxStr + "_c1_wet' value='" + String(info->chamber1.soilWetThreshold) + "'></div>";
+    page += "<div class='field'><label>Ch2 DRY (%)</label><input type='number' step='1' name='gp" + idxStr + "_c2_dry' value='" + String(info->chamber2.soilDryThreshold) + "'></div>";
+    page += "<div class='field'><label>Ch2 WET (%)</label><input type='number' step='1' name='gp" + idxStr + "_c2_wet' value='" + String(info->chamber2.soilWetThreshold) + "'></div>";
+    page += "<div class='field'><label>Light 1 ON</label><input type='time' name='gp" + idxStr + "_l1_on' value='" + minutesToTimeStrSafe(info->light1.onMinutes) + "'></div>";
+    page += "<div class='field'><label>Light 1 OFF</label><input type='time' name='gp" + idxStr + "_l1_off' value='" + minutesToTimeStrSafe(info->light1.offMinutes) + "'></div>";
+    page += "<div class='field'><label>Light 1 mode</label><label><input type='checkbox' name='gp" + idxStr + "_l1_auto' value='1'";
+    if (info->light1.enabled) page += " checked";
+    page += "> Use schedule</label><div class='small'>Unchecked sets MAN mode.</div></div>";
+    page += "<div class='field'><label>Light 2 ON</label><input type='time' name='gp" + idxStr + "_l2_on' value='" + minutesToTimeStrSafe(info->light2.onMinutes) + "'></div>";
+    page += "<div class='field'><label>Light 2 OFF</label><input type='time' name='gp" + idxStr + "_l2_off' value='" + minutesToTimeStrSafe(info->light2.offMinutes) + "'></div>";
+    page += "<div class='field'><label>Light 2 mode</label><label><input type='checkbox' name='gp" + idxStr + "_l2_auto' value='1'";
+    if (info->light2.enabled) page += " checked";
+    page += "> Use schedule</label><div class='small'>Unchecked sets MAN mode.</div></div>";
+    page += "<div class='field'><label>Fan ON temp (°C)</label><input type='number' step='0.1' name='gp" + idxStr + "_fan_on' value='" + String(info->env.fanOnTemp, 1) + "'></div>";
+    page += "<div class='field'><label>Fan OFF temp (°C)</label><input type='number' step='0.1' name='gp" + idxStr + "_fan_off' value='" + String(info->env.fanOffTemp, 1) + "'></div>";
+    page += "<div class='field'><label>Fan ON humidity (%RH)</label><input type='number' step='1' name='gp" + idxStr + "_hum_on' value='" + String(info->env.fanHumOn) + "'></div>";
+    page += "<div class='field'><label>Fan OFF humidity (%RH)</label><input type='number' step='1' name='gp" + idxStr + "_hum_off' value='" + String(info->env.fanHumOff) + "'></div>";
+    page += "<div class='field'><label>Pump minimum OFF (s)</label><input type='number' step='1' name='gp" + idxStr + "_pump_off' value='" + String(info->env.pumpMinOffSec) + "'></div>";
+    page += "<div class='field'><label>Pump maximum ON (s)</label><input type='number' step='1' name='gp" + idxStr + "_pump_on' value='" + String(info->env.pumpMaxOnSec) + "'></div>";
+    page += "<div class='field'><label>Automation defaults</label>";
+    page += "<label><input type='checkbox' name='gp" + idxStr + "_set_auto_fan' value='1'";
+    if (info->setsAutoFan) page += " checked";
+    page += "> Apply AUTO fan</label><br>";
+    page += "<label><input type='checkbox' name='gp" + idxStr + "_set_auto_pump' value='1'";
+    if (info->setsAutoPump) page += " checked";
+    page += "> Apply AUTO pump</label><br>";
+    page += "<label><input type='checkbox' name='gp" + idxStr + "_auto_fan' value='1'";
+    if (info->autoFan) page += " checked";
+    page += "> Fan AUTO value</label><br>";
+    page += "<label><input type='checkbox' name='gp" + idxStr + "_auto_pump' value='1'";
+    if (info->autoPump) page += " checked";
+    page += "> Pump AUTO value</label><div class='small'>If set AUTO is unchecked, the automation defaults above are ignored.</div></div>";
+    page += "</div>";
+    page += "</div>";
+  }
+  page += "<p class='small' style='margin-top:8px'>Saving config also stores preset edits. Apply buttons will use these values.</p>";
   page += "</div>";
 
   // SYSTEM
@@ -1272,6 +1334,66 @@ static void handleConfigPost() {
       server.send(302, "text/plain", "");
       return;
     }
+  }
+
+  bool growProfilesChanged = false;
+  auto gpArg = [&](const String &prefix, const char* suffix) -> String {
+    String key = prefix + suffix;
+    return server.hasArg(key) ? server.arg(key) : String("");
+  };
+
+  for (size_t i = 1; i < growProfileCount(); i++) {
+    GrowProfileData profile;
+    if (!getGrowProfile(i, profile)) continue;
+    const String prefix = String("gp") + String(i) + "_";
+
+    if (server.hasArg(prefix + "label")) growProfilesChanged = true;
+
+    String label = gpArg(prefix, "label");
+    if (label.length()) profile.label = label;
+
+    String c1Dry = gpArg(prefix, "c1_dry");
+    if (c1Dry.length()) profile.chambers[0].soilDry = c1Dry.toInt();
+    String c1Wet = gpArg(prefix, "c1_wet");
+    if (c1Wet.length()) profile.chambers[0].soilWet = c1Wet.toInt();
+    String c2Dry = gpArg(prefix, "c2_dry");
+    if (c2Dry.length()) profile.chambers[1].soilDry = c2Dry.toInt();
+    String c2Wet = gpArg(prefix, "c2_wet");
+    if (c2Wet.length()) profile.chambers[1].soilWet = c2Wet.toInt();
+
+    profile.chambers[0].lightOnMinutes  = parseTimeToMinutes(gpArg(prefix, "l1_on"),  profile.chambers[0].lightOnMinutes);
+    profile.chambers[0].lightOffMinutes = parseTimeToMinutes(gpArg(prefix, "l1_off"), profile.chambers[0].lightOffMinutes);
+    profile.chambers[1].lightOnMinutes  = parseTimeToMinutes(gpArg(prefix, "l2_on"),  profile.chambers[1].lightOnMinutes);
+    profile.chambers[1].lightOffMinutes = parseTimeToMinutes(gpArg(prefix, "l2_off"), profile.chambers[1].lightOffMinutes);
+
+    profile.chambers[0].lightAuto = server.hasArg(prefix + "l1_auto");
+    profile.chambers[1].lightAuto = server.hasArg(prefix + "l2_auto");
+
+    String fanOn  = gpArg(prefix, "fan_on");
+    String fanOff = gpArg(prefix, "fan_off");
+    if (fanOn.length())  profile.env.fanOnTemp  = fanOn.toFloat();
+    if (fanOff.length()) profile.env.fanOffTemp = fanOff.toFloat();
+
+    String humOn  = gpArg(prefix, "hum_on");
+    String humOff = gpArg(prefix, "hum_off");
+    if (humOn.length())  profile.env.fanHumOn  = humOn.toInt();
+    if (humOff.length()) profile.env.fanHumOff = humOff.toInt();
+
+    String pumpOff = gpArg(prefix, "pump_off");
+    String pumpOn  = gpArg(prefix, "pump_on");
+    if (pumpOff.length()) profile.env.pumpMinOffSec = pumpOff.toInt();
+    if (pumpOn.length())  profile.env.pumpMaxOnSec  = pumpOn.toInt();
+
+    profile.setAutoFan  = server.hasArg(prefix + "set_auto_fan");
+    profile.setAutoPump = server.hasArg(prefix + "set_auto_pump");
+    profile.autoFan     = server.hasArg(prefix + "auto_fan");
+    profile.autoPump    = server.hasArg(prefix + "auto_pump");
+
+    updateGrowProfile(i, profile);
+  }
+
+  if (growProfilesChanged) {
+    persistGrowProfiles();
   }
 
   // Env thresholds

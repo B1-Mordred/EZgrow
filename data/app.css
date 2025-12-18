@@ -59,7 +59,7 @@ a{color:inherit;text-decoration:none}
 }
 .brand-logo{
   display:block;
-  height:45px;
+  height:34px;
   width:auto;
   object-fit:contain;
 }
@@ -370,6 +370,7 @@ option:checked{
   color:var(--muted);
   text-transform:uppercase;
 }
+.profile-label{display:block;color:var(--muted);font-size:12px;margin-top:6px}
 
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{

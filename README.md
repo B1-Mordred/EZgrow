@@ -23,9 +23,11 @@ It displays status on a small **0.91" WE-DA-361 I²C OLED** and exposes a web UI
 - History chart labels use the device timezone when supported by the browser.
 - Live sparklines for sensors on the dashboard
 - Grow profile tab with preset previews, chamber-targeted apply (Ch1→Light1, Ch2→Light2), plus system tab showing current device time
+- Inline preset editor on the Config → Grow profile tab to rename/update grow profile defaults (soil thresholds, light schedules, automation, and fan/pump/preset automation toggles) with values saved to NVS
 - Light schedules on the dashboard, grow profile previews, and preset tables show timezone-aware on/off countdowns based on the device clock (including midnight-crossing schedules)
 - Relay controls that disable while requests are processing, with toast feedback for mode/toggle actions
 - Per-chamber dashboard labeling for soil tiles and light controls, with `/api/status` exposing chamber metadata (including `id` 1/2 and `idx` 0/1) for UI and integrations
+- Dashboard surfaces the applied grow profile per chamber (using `/api/status` `profile_id`/`profile_label` fields) with graceful fallbacks for custom/manual configs
 - Refreshed dashboard branding with an EZgrow logo and favicon for quick device identification, using a natural logo aspect ratio in the top bar
 - **Wi-Fi configuration** (scan SSIDs, select, store SSID/password in NVS) via the `/wifi` onboarding page (captive portal entry point) or the Config Wi-Fi tab
 - **HTTP Basic Authentication** (credentials stored in NVS, configurable in UI)

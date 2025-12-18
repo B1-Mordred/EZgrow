@@ -6,6 +6,7 @@ function setupDom(){
   const dom = new JSDOM(`<!doctype html><body></body>`, { url: "http://localhost" });
   global.window = dom.window;
   global.document = dom.window.document;
+  global.localStorage = dom.window.localStorage;
   global.requestAnimationFrame = cb => cb();
 }
 

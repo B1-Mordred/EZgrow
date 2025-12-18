@@ -20,6 +20,12 @@ test('renders brand with logo and text', () => {
   assert.match(webUiSource, pattern);
 });
 
+test('renders history charts without the light canvas', () => {
+  assert.match(webUiSource, /<canvas id='tempHumChart'[^>]*><\/canvas>/);
+  assert.match(webUiSource, /<canvas id='soilChart'[^>]*><\/canvas>/);
+  assert.doesNotMatch(webUiSource, /id='lightChart'/);
+});
+
 test('applies brand layout and sizing styles', () => {
   assert.match(appCss, /\.brand\s*{[^}]*display:flex;[^}]*align-items:center;[^}]*gap:12px;[^}]*}/s);
   assert.match(

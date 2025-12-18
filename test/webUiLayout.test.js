@@ -20,6 +20,15 @@ test('renders brand with logo and text', () => {
   assert.match(webUiSource, pattern);
 });
 
+test('renders top navigation with dashboard/config and captive portal Wi-Fi setup only', () => {
+  const navPattern = new RegExp(
+    /if \(!sCaptivePortalActive\) {\s*page \+= "<a href='\/'";[\s\S]*?>Dashboard<\/a>";\s*page \+= "<a href='\/config'";[\s\S]*?>Config<\/a>";\s*} else {\s*page \+= "<a href='\/wifi'";[\s\S]*?>Wi-Fi Setup<\/a>";\s*}\s*page \+= "<\/div>";/s,
+    's'
+  );
+  assert.match(webUiSource, navPattern);
+  assert.doesNotMatch(webUiSource, />Wi-Fi<\/a>;?/);
+});
+
 test('renders history charts without the light canvas', () => {
   assert.match(webUiSource, /<canvas id='tempHumChart'[^>]*><\/canvas>/);
   assert.match(webUiSource, /<canvas id='soilChart'[^>]*><\/canvas>/);
@@ -36,6 +45,11 @@ test('applies brand layout and sizing styles', () => {
     appCss,
     /\.brand-text\s*{[^}]*display:flex;[^}]*flex-direction:column;[^}]*font-weight:900;[^}]*font-size:1\.05rem;[^}]*letter-spacing:\.35px;[^}]*line-height:1\.1;[^}]*}/s
   );
+});
+
+test('styles the topbar with the dark theme background and accent divider', () => {
+  assert.match(appCss, /\.topbar\s*{[^}]*background:var\(--bg-main\);[^}]*color:var\(--text-main\);[^}]*border-bottom:1px solid var\(--accent\);[^}]*}/s);
+  assert.match(appCss, /\.stale \.topbar{[^}]*background:var\(--bg-panel\)[^}]*}/s);
 });
 
 test('includes key config tabs with Wi-Fi and Water & Air', () => {

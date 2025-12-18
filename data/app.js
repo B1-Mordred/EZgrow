@@ -180,6 +180,69 @@
   };
 
   const datasetStr = (el, key) => (el && el.dataset && (key in el.dataset)) ? String(el.dataset[key]) : "";
+  const MINUTES_PER_DAY = 24 * 60;
+
+  function minutesToClock(mins){
+    if (!Number.isFinite(mins)) return "—";
+    const total = ((mins % MINUTES_PER_DAY) + MINUTES_PER_DAY) % MINUTES_PER_DAY;
+    const h = Math.floor(total / 60);
+    const m = Math.floor(total % 60);
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  }
+
+  function clockStringToMinutes(str){
+    if (typeof str !== "string") return null;
+    const match = str.trim().match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+    if (!match) return null;
+    const h = Number(match[1]);
+    const m = Number(match[2]);
+    const s = match[3] ? Number(match[3]) : 0;
+    if (!Number.isFinite(h) || !Number.isFinite(m) || !Number.isFinite(s)) return null;
+    if (h < 0 || h > 23 || m < 0 || m > 59 || s < 0 || s > 59) return null;
+    return h * 60 + m + (s / 60);
+  }
+
+  function normalizeMinutes(mins){
+    if (!Number.isFinite(mins)) return null;
+    const mod = mins % MINUTES_PER_DAY;
+    return mod < 0 ? mod + MINUTES_PER_DAY : mod;
+  }
+
+  function nearestSignedDelta(targetMinutes, nowMinutes){
+    const target = normalizeMinutes(targetMinutes);
+    const now = normalizeMinutes(nowMinutes);
+    if (target == null || now == null) return null;
+    const forward = (target - now + MINUTES_PER_DAY) % MINUTES_PER_DAY;
+    const backward = forward === 0 ? 0 : forward - MINUTES_PER_DAY;
+    return (Math.abs(backward) < Math.abs(forward)) ? backward : forward;
+  }
+
+  function formatHoursValue(hours){
+    if (!Number.isFinite(hours)) return "";
+    const rounded = hours >= 10 ? Math.round(hours) : Math.round(hours * 10) / 10;
+    const safe = Math.max(0.1, rounded);
+    return Number.isInteger(safe) ? `${safe}` : safe.toFixed(1);
+  }
+
+  function formatDeltaHours(deltaMinutes, label){
+    if (deltaMinutes == null) return "";
+    if (Math.abs(deltaMinutes) < 0.5) return `${label} now`;
+    const hours = Math.abs(deltaMinutes) / 60;
+    const hoursLabel = formatHoursValue(hours);
+    const dir = deltaMinutes > 0 ? "in" : "ago";
+    return dir === "in"
+      ? `${label} in ${hoursLabel} h`
+      : `${label} ${hoursLabel} h ago`;
+  }
+
+  function splitScheduleString(str){
+    if (typeof str !== "string") return { on:"", off:"" };
+    const parts = str.split(/–|-/);
+    return {
+      on: (parts[0] || "").trim(),
+      off: (parts[1] || "").trim(),
+    };
+  }
 
   function renderAutomationPreview(container, data){
     if (!container) return;
@@ -250,13 +313,63 @@
     const on  = data.lightOn || "—";
     const off = data.lightOff || "—";
     const mode = data.lightAuto === null ? "—" : (data.lightAuto ? "AUTO" : "MAN");
+    const onMinutes  = clockStringToMinutes(on);
+    const offMinutes = clockStringToMinutes(off);
+    const scheduleText = buildScheduleLabel(onMinutes, offMinutes, {
+      timezoneLabel: deviceClock.timezoneLabel,
+      nowMinutes: deviceClock.minutes,
+      baseLabel: `${lightLabel}: ${on} – ${off}`,
+      onLabel: on,
+      offLabel: off,
+      timeSynced: deviceClock.timeSynced,
+    });
 
     if (soilEl) soilEl.textContent = soilText;
-    if (lightEl) lightEl.textContent = `${lightLabel}: ${on} – ${off}`;
+    if (lightEl) lightEl.textContent = scheduleText;
     if (modeEl) modeEl.textContent = `${lightLabel} mode: ${mode}`;
     if (autoEl) renderAutomationPreview(autoEl, data);
 
     previewEl.dataset.previewLabel = chamberName;
+  }
+
+  function renderPresetSchedules(nowMinutesOverride=null){
+    const nowMinutes = Number.isFinite(nowMinutesOverride) ? nowMinutesOverride
+      : (deviceClock.timeSynced ? deviceClock.minutes : null);
+    const tzLabel = deviceClock.timezoneLabel;
+
+    $$(".preset-schedules").forEach(cell => {
+      const row = cell.closest(".preset-row");
+      if (!row) return;
+
+      const l1OnStr  = datasetStr(row, "l1On");
+      const l1OffStr = datasetStr(row, "l1Off");
+      const l2OnStr  = datasetStr(row, "l2On");
+      const l2OffStr = datasetStr(row, "l2Off");
+
+      const l1On  = clockStringToMinutes(l1OnStr);
+      const l1Off = clockStringToMinutes(l1OffStr);
+      const l2On  = clockStringToMinutes(l2OnStr);
+      const l2Off = clockStringToMinutes(l2OffStr);
+
+      const sched1 = buildScheduleLabel(l1On, l1Off, {
+        timezoneLabel: tzLabel,
+        nowMinutes,
+        baseLabel: `L1 ${l1OnStr || minutesToClock(l1On)}–${l1OffStr || minutesToClock(l1Off)}`,
+        onLabel: l1OnStr,
+        offLabel: l1OffStr,
+        timeSynced: deviceClock.timeSynced,
+      });
+      const sched2 = buildScheduleLabel(l2On, l2Off, {
+        timezoneLabel: "",
+        nowMinutes,
+        baseLabel: `L2 ${l2OnStr || minutesToClock(l2On)}–${l2OffStr || minutesToClock(l2Off)}`,
+        onLabel: l2OnStr,
+        offLabel: l2OffStr,
+        timeSynced: deviceClock.timeSynced,
+      });
+
+      cell.textContent = `${sched1} · ${sched2}`;
+    });
   }
 
   function buildChamberConfirmMessage(profile, chamberName, lightLabel){
@@ -320,6 +433,63 @@
     if (label.includes("/")) return label;
 
     return "";
+  }
+
+  function timezoneLabelFromStatus(status){
+    const label = (status && typeof status.timezone === "string") ? status.timezone.trim() : "";
+    const resolved = resolveTimezone(status);
+    return label || resolved;
+  }
+
+  let deviceClock = {
+    minutes: null,
+    timezone: "",
+    timezoneLabel: "",
+    timezoneIana: "",
+    timeSynced: false,
+    rawTime: "",
+  };
+
+  let statusTimezone = "";
+
+  function updateDeviceClockFromStatus(status){
+    const tz = resolveTimezone(status);
+    deviceClock = {
+      minutes: clockStringToMinutes(status?.time),
+      timezone: tz,
+      timezoneLabel: timezoneLabelFromStatus(status),
+      timezoneIana: (status && typeof status.timezone_iana === "string") ? status.timezone_iana.trim() : "",
+      timeSynced: !!(status && status.time_synced),
+      rawTime: typeof status?.time === "string" ? status.time : "",
+    };
+    statusTimezone = tz;
+    return deviceClock;
+  }
+
+  function buildScheduleLabel(onMinutes, offMinutes, opts={}){
+    const {
+      timezoneLabel = deviceClock.timezoneLabel,
+      nowMinutes = deviceClock.timeSynced ? deviceClock.minutes : null,
+      baseLabel,
+      onLabel,
+      offLabel,
+      timeSynced = deviceClock.timeSynced,
+    } = opts;
+
+    const baseOn  = onLabel || minutesToClock(onMinutes);
+    const baseOff = offLabel || minutesToClock(offMinutes);
+    const base = baseLabel || `${baseOn}–${baseOff}`;
+    const tzText = timezoneLabel ? ` (${timezoneLabel})` : "";
+
+    const deltas = [];
+    if (timeSynced && Number.isFinite(nowMinutes)){
+      const onDelta = nearestSignedDelta(onMinutes, nowMinutes);
+      if (onDelta != null) deltas.push(formatDeltaHours(onDelta, "on"));
+      const offDelta = nearestSignedDelta(offMinutes, nowMinutes);
+      if (offDelta != null) deltas.push(formatDeltaHours(offDelta, "off"));
+    }
+    const deltaText = deltas.filter(Boolean).join(" · ");
+    return `${base}${tzText}${deltaText ? ` · ${deltaText}` : ""}`;
   }
 
   function prepareHistoryDatasets(points, timezone, chamberLabels=[]){
@@ -421,7 +591,6 @@
     const styles = getComputedStyle(document.documentElement);
     const accent = styles.getPropertyValue("--accent").trim() || "#12a150";
     const muted  = styles.getPropertyValue("--muted").trim()  || "#6b7c85";
-    let statusTimezone = "";
     const relayStates = {};
     const pollIntervalMs = 2000;
     const staleAfterMs = 10000;
@@ -441,10 +610,10 @@
       lastOkTs = Date.now();
       consecutiveErrors = 0;
       setStaleState(false);
-      statusTimezone = resolveTimezone(s);
+      updateDeviceClockFromStatus(s);
       chamberLabels = deriveChamberLabels(s.chambers);
 
-      const tzLabel = s.timezone ? ` (${s.timezone})` : "";
+      const tzLabel = deviceClock.timezoneLabel ? ` (${deviceClock.timezoneLabel})` : "";
       setText("#top-time", s.time_synced ? `${s.time}${tzLabel}` : "syncing…");
 
       if (s.wifi?.connected){
@@ -483,7 +652,20 @@
         relayStates[id] = !!r.state;
         setBadge(id, r.state, r.auto);
         const sched = $(`#sched-${id}`);
-        if (sched && r.schedule) sched.textContent = r.schedule;
+        if (sched && r.schedule){
+          const scheduleParts = splitScheduleString(r.schedule);
+          const onMinutes = Number.isFinite(r.on_minutes) ? Number(r.on_minutes) : clockStringToMinutes(scheduleParts.on);
+          const offMinutes = Number.isFinite(r.off_minutes) ? Number(r.off_minutes) : clockStringToMinutes(scheduleParts.off);
+          const tz = deviceClock.timezoneLabel || s.timezone || s.timezone_iana || "";
+          sched.textContent = buildScheduleLabel(onMinutes, offMinutes, {
+            timezoneLabel: tz,
+            nowMinutes: deviceClock.minutes,
+            baseLabel: r.schedule,
+            onLabel: scheduleParts.on,
+            offLabel: scheduleParts.off,
+            timeSynced: deviceClock.timeSynced,
+          });
+        }
       }
     }
 
@@ -629,8 +811,10 @@
 
     try{
       const s = await apiGet(`/api/status?ts=${Date.now()}`);
-      const tzLabel = s.timezone ? ` (${s.timezone})` : "";
-      setText("#cfg-time", s.time_synced ? `${s.time}${tzLabel}` : "syncing…");
+      updateDeviceClockFromStatus(s);
+      const tzLabel = deviceClock.timezoneLabel ? ` (${deviceClock.timezoneLabel})` : "";
+      setText("#cfg-time", deviceClock.timeSynced ? `${deviceClock.rawTime || s.time}${tzLabel}` : "syncing…");
+      renderPresetSchedules();
 
       const banner = $("#appliedProfileBanner");
       if (banner && banner.dataset.label){
@@ -639,6 +823,7 @@
     }catch(e){
       console.warn("Config status fetch failed", e);
     }
+    renderPresetSchedules();
 
     const renderPreview = idx => {
       const select = $(`#prof-ch${idx + 1}`);
@@ -770,8 +955,15 @@
       pushSpark,
       deriveChamberLabels,
       resolveTimezone,
+      buildScheduleLabel,
+      clockStringToMinutes,
+      minutesToClock,
+      nearestSignedDelta,
+      formatDeltaHours,
       readProfileOption,
       renderChamberPreview,
+      renderPresetSchedules,
+      updateDeviceClockFromStatus,
       buildChamberConfirmMessage,
       prepareHistoryDatasets,
       resolveChartScales,

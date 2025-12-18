@@ -76,12 +76,16 @@ test('renderChamberPreview populates preview text', () => {
   const { document, __app } = dom.window;
   const select1 = document.querySelector('#prof-ch1');
   select1.value = '1';
+  __app.updateDeviceClockFromStatus({ time:'12:00:00', time_synced:true, timezone:'UTC' });
 
   const preview = document.querySelector('[data-preview="ch1"]');
   __app.renderChamberPreview(select1, preview, 0);
 
   assert.equal(document.querySelector('.pv-soil').textContent, '34% dry / 44% wet');
-  assert.ok(document.querySelector('.pv-light').textContent.includes('06:30'));
+  const lightText = document.querySelector('.pv-light').textContent;
+  assert.ok(lightText.includes('06:30'));
+  assert.ok(lightText.includes('UTC'));
+  assert.ok(/off (in [0-9.]+ h|[0-9.]+ h ago)/.test(lightText));
   assert.ok(document.querySelector('.pv-mode').textContent.includes('AUTO'));
   const autoText = document.querySelector('.pv-auto').textContent;
   assert.ok(autoText.includes('Fan'));

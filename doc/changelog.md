@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Added a System-tab reboot control that posts to `/api/reboot`, audits the requester, responds before restarting, and surfaces confirmation/toast feedback in the UI.
 - Added timezone-aware on/off countdowns for light schedules on the dashboard, grow profile previews, and preset tables using device time (including schedules that cross midnight).
 - Refined Config UI information architecture with Environment, Lights, Water & Air, Grow profile, Wi‑Fi, System, and Security tabs, compact preset cards, active profile indicators, and automation pills showing AUTO/MAN modes.
 - Added higher-contrast dark theme variables, grid-based preset previews with automation badges, an inline apply status + confirmation for apply-both actions, and a new `/api/grow/apply_all` endpoint for global preset application.

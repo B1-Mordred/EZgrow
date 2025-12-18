@@ -134,6 +134,7 @@ static void beginPage(String& page, const char* title, const char* activeNav, bo
   page += "<title>";
   page += title;
   page += "</title>";
+  page += "<link rel='icon' href='/logo-ezgrow.png' type='image/png'>";
   page += "<link rel='stylesheet' href='/app.css'>";
   if (includeCharts) page += "<script defer src='/chart.umd.min.js'></script>";
   page += "<script defer src='/app.js'></script>";
@@ -143,7 +144,7 @@ static void beginPage(String& page, const char* title, const char* activeNav, bo
 
   // Top bar
   page += "<div class='topbar'><div class='topbar-inner'>";
-  page += "<div class='brand'>EZgrow</div>";
+  page += "<div class='brand'><img src='/logo-ezgrow.png' class='brand-logo' alt='EZgrow logo'><span class='brand-text'>EZgrow</span></div>";
 
   page += "<div class='nav'>";
   if (!sCaptivePortalActive) {

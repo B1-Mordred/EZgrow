@@ -36,3 +36,4 @@
 - Documented configuration tabs (environment, lights, automation, grow profiles, system timezone, security) to match the current UI.
 - Added chamber-targeted grow profile application (Ch1→Light1, Ch2→Light2) that updates only soil thresholds and linked light schedules, plus updated previews and UI actions to persist the change.
 - Pump automation now tracks which chambers were dry at start, watering them until their individual wet thresholds are reached (or max-on expires) while preserving minimum-off timing.
+- Added configurable dashboard temperature/humidity chart ranges (default 10–40 °C and 0–100 %RH) stored in NVS and exposed on `/config` and `/api/status`.

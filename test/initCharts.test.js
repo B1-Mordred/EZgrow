@@ -33,6 +33,7 @@ test('initCharts renders temp/humidity and soil history without light datasets',
     time_synced: true,
     relays: {},
     chambers: [],
+    chart_scales: { temp_min: 5, temp_max: 35, hum_min: 10, hum_max: 90 },
   };
 
   const historyResponse = {
@@ -81,6 +82,10 @@ test('initCharts renders temp/humidity and soil history without light datasets',
     ]);
     assert.deepEqual(tempHumConfig.data.datasets[0].data, [22.5, 23.1]);
     assert.deepEqual(tempHumConfig.data.datasets[1].data, [50, 52]);
+    assert.equal(tempHumConfig.options.scales.y.min, 5);
+    assert.equal(tempHumConfig.options.scales.y.max, 35);
+    assert.equal(tempHumConfig.options.scales.y1.min, 10);
+    assert.equal(tempHumConfig.options.scales.y1.max, 90);
 
     assert.deepEqual(soilConfig.data.datasets.map(ds => ds.label), [
       'Chamber 1 soil',

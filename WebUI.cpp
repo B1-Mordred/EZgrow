@@ -279,6 +279,13 @@ static void handleStatusApi() {
   json += ",\"soil2\":" + String(gSensors.soil2Percent);
   json += "},";
 
+  json += "\"chart_scales\":{";
+  json += "\"temp_min\":" + String(gConfig.charts.tempMinC, 1);
+  json += ",\"temp_max\":" + String(gConfig.charts.tempMaxC, 1);
+  json += ",\"hum_min\":" + String(gConfig.charts.humMinPct);
+  json += ",\"hum_max\":" + String(gConfig.charts.humMaxPct);
+  json += "},";
+
   json += "\"chambers\":[";
   auto chamberJson = [&](int idx, const ChamberConfig& cfg, int soilPercent, const char* lightId) {
     const int id = idx + 1;
@@ -847,6 +854,14 @@ static void handleConfigGet() {
           "<input type='number' step='1' name='fanHumOn' value='" + String(gConfig.env.fanHumOn) + "'></div>";
   page += "<div class='field'><label>Fan OFF humidity (%RH)</label>"
           "<input type='number' step='1' name='fanHumOff' value='" + String(gConfig.env.fanHumOff) + "'></div>";
+  page += "<div class='field'><label>Temperature chart min (°C)</label>"
+          "<input type='number' step='0.1' name='chartTempMin' value='" + String(gConfig.charts.tempMinC, 1) + "'><div class='small'>Dashboard temperature history Y-axis minimum.</div></div>";
+  page += "<div class='field'><label>Temperature chart max (°C)</label>"
+          "<input type='number' step='0.1' name='chartTempMax' value='" + String(gConfig.charts.tempMaxC, 1) + "'><div class='small'>Dashboard temperature history Y-axis maximum.</div></div>";
+  page += "<div class='field'><label>Humidity chart min (%RH)</label>"
+          "<input type='number' step='1' name='chartHumMin' value='" + String(gConfig.charts.humMinPct) + "'><div class='small'>Dashboard humidity history Y-axis minimum.</div></div>";
+  page += "<div class='field'><label>Humidity chart max (%RH)</label>"
+          "<input type='number' step='1' name='chartHumMax' value='" + String(gConfig.charts.humMaxPct) + "'><div class='small'>Dashboard humidity history Y-axis maximum.</div></div>";
   page += "<div class='field'><label>Chamber 1 name</label>"
           "<input type='text' maxlength='24' name='c1Name' value='" + htmlEscape(gConfig.chamber1.name) + "'><div class='small'>1–24 characters, HTML is stripped automatically.</div></div>";
   page += "<div class='field'><label>Chamber 2 name</label>"
@@ -1123,6 +1138,38 @@ static void handleConfigPost() {
   if (gConfig.env.fanHumOff >= gConfig.env.fanHumOn) {
     gConfig.env.fanHumOn  = 80;
     gConfig.env.fanHumOff = 70;
+  }
+
+  auto clampFloat = [](float v, float lo, float hi) {
+    if (v < lo) return lo;
+    if (v > hi) return hi;
+    return v;
+  };
+
+  if (server.hasArg("chartTempMin")) {
+    float v = server.arg("chartTempMin").toFloat();
+    gConfig.charts.tempMinC = clampFloat(v, -40.0f, 120.0f);
+  }
+  if (server.hasArg("chartTempMax")) {
+    float v = server.arg("chartTempMax").toFloat();
+    gConfig.charts.tempMaxC = clampFloat(v, -40.0f, 120.0f);
+  }
+  if (gConfig.charts.tempMaxC <= gConfig.charts.tempMinC) {
+    gConfig.charts.tempMinC = 10.0f;
+    gConfig.charts.tempMaxC = 40.0f;
+  }
+
+  if (server.hasArg("chartHumMin")) {
+    int v = server.arg("chartHumMin").toInt();
+    gConfig.charts.humMinPct = constrain(v, 0, 100);
+  }
+  if (server.hasArg("chartHumMax")) {
+    int v = server.arg("chartHumMax").toInt();
+    gConfig.charts.humMaxPct = constrain(v, 0, 100);
+  }
+  if (gConfig.charts.humMaxPct <= gConfig.charts.humMinPct) {
+    gConfig.charts.humMinPct = 0;
+    gConfig.charts.humMaxPct = 100;
   }
 
   if (server.hasArg("c1Name")) {

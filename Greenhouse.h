@@ -25,6 +25,13 @@ struct EnvConfig {
   unsigned long pumpMaxOnSec;     // seconds
 };
 
+struct ChartScaleConfig {
+  float tempMinC;  // °C
+  float tempMaxC;  // °C
+  int   humMinPct; // %RH
+  int   humMaxPct; // %RH
+};
+
 struct ChamberConfig {
   String name;
   int    soilDryThreshold; // %
@@ -41,6 +48,7 @@ struct GreenhouseConfig {
   int           tzIndex; // selectable time zone index
   ChamberConfig chamber1;
   ChamberConfig chamber2;
+  ChartScaleConfig charts;
 };
 
 struct GrowProfileInfo {

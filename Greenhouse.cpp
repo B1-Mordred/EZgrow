@@ -324,6 +324,11 @@ void loadConfig() {
 
   gConfig.tzIndex  = 0;
 
+  gConfig.charts.tempMinC = 10.0f;
+  gConfig.charts.tempMaxC = 40.0f;
+  gConfig.charts.humMinPct = 0;
+  gConfig.charts.humMaxPct = 100;
+
   gConfig.chamber1.name              = DEFAULT_CHAMBER1_NAME;
   gConfig.chamber1.soilDryThreshold  = DEFAULT_SOIL_DRY;
   gConfig.chamber1.soilWetThreshold  = DEFAULT_SOIL_WET;
@@ -362,6 +367,11 @@ void loadConfig() {
   gConfig.autoPump = prefs.getBool("autoPump", gConfig.autoPump);
 
   gConfig.tzIndex  = prefs.getInt("tzIdx",   gConfig.tzIndex);
+
+  gConfig.charts.tempMinC = prefs.getFloat("chartTMin", gConfig.charts.tempMinC);
+  gConfig.charts.tempMaxC = prefs.getFloat("chartTMax", gConfig.charts.tempMaxC);
+  gConfig.charts.humMinPct = prefs.getInt("chartHMin", gConfig.charts.humMinPct);
+  gConfig.charts.humMaxPct = prefs.getInt("chartHMax", gConfig.charts.humMaxPct);
 
   bool hasC1Name = prefs.isKey("c1Name");
   bool hasC2Name = prefs.isKey("c2Name");
@@ -426,6 +436,26 @@ void loadConfig() {
     gConfig.tzIndex = 0;
   }
 
+  auto clampFloat = [](float v, float lo, float hi) {
+    if (v < lo) return lo;
+    if (v > hi) return hi;
+    return v;
+  };
+
+  gConfig.charts.tempMinC = clampFloat(gConfig.charts.tempMinC, -40.0f, 120.0f);
+  gConfig.charts.tempMaxC = clampFloat(gConfig.charts.tempMaxC, -40.0f, 120.0f);
+  if (gConfig.charts.tempMaxC <= gConfig.charts.tempMinC) {
+    gConfig.charts.tempMinC = 10.0f;
+    gConfig.charts.tempMaxC = 40.0f;
+  }
+
+  gConfig.charts.humMinPct = constrain(gConfig.charts.humMinPct, 0, 100);
+  gConfig.charts.humMaxPct = constrain(gConfig.charts.humMaxPct, 0, 100);
+  if (gConfig.charts.humMaxPct <= gConfig.charts.humMinPct) {
+    gConfig.charts.humMinPct = 0;
+    gConfig.charts.humMaxPct = 100;
+  }
+
   if (migratedLegacySoil || chamberValidated) {
     saveConfig();
   }
@@ -466,6 +496,11 @@ void saveConfig() {
   prefs.putBool("autoPump", gConfig.autoPump);
 
   prefs.putInt("tzIdx", gConfig.tzIndex);
+
+  prefs.putFloat("chartTMin", gConfig.charts.tempMinC);
+  prefs.putFloat("chartTMax", gConfig.charts.tempMaxC);
+  prefs.putInt  ("chartHMin", gConfig.charts.humMinPct);
+  prefs.putInt  ("chartHMax", gConfig.charts.humMaxPct);
 
   prefs.end();
 }

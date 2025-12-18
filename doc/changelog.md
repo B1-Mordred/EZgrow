@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Served the EZgrow logo from LittleFS at `/logo-ezgrow.png` with a dedicated handler and route.
 - Added soil moisture history logging (soil1/soil2), exposing the data via `/api/history` with a dashboard soil chart.
 - Added chamber-scoped grow profile selectors with a `/api/grow/apply` endpoint, per-chamber soil inputs, HTML-stripped chamber names (1–24 chars), and updated config helper text for the shared pump.
 - Expanded `/api/grow/apply` to accept zero- or one-based chamber identifiers (returning both `chamber_id` and `chamber_idx`) and added chamber `idx` metadata to `/api/status` payloads.

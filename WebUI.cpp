@@ -416,6 +416,10 @@ static void handleChartJs() {
   streamStaticFile("/chart.umd.min.js", "application/javascript");
 }
 
+static void handleLogoPng() {
+  streamStaticFile("/logo-ezgrow.png", "image/png");
+}
+
 static void handleAppCss() {
   streamStaticFile("/app.css", "text/css");
 }
@@ -1278,6 +1282,7 @@ void initWebServer() {
 
   // Static assets (offline)
   server.on("/chart.umd.min.js", HTTP_GET,  handleChartJs);
+  server.on("/logo-ezgrow.png",  HTTP_GET,  handleLogoPng);
   server.on("/app.css",          HTTP_GET,  handleAppCss);
   server.on("/app.js",           HTTP_GET,  handleAppJs);
 

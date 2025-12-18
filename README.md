@@ -425,6 +425,7 @@ Protected by Basic Auth in STA mode. The page uses tabs:
 - **System**
   - Displays the current device time.
   - Timezone dropdown (UTC, Europe/Berlin, Europe/London, US/Eastern, US/Central, US/Mountain, US/Pacific). Changes apply immediately to NTP/time display.
+  - Reboot control with confirmation, calling the `/api/reboot` endpoint, logging the requester, and responding before restarting so the UI can show feedback.
 - **Security**
   - HTTP Basic Auth credentials: username (empty disables auth) and password (blank keeps existing password).
 
@@ -477,9 +478,11 @@ Connection behaviour:
   - For lights: toggles use of schedule (AUTO) vs manual relay control.
   - For fan/pump: toggles automatic control logic vs manual relay control.  
   Protected by Basic Auth in STA mode.
-- `GET /api/grow/apply?chamber=0|1|2&profile=0-3` (or `chamber_id=1|2`)  
+- `GET /api/grow/apply?chamber=0|1|2&profile=0-3` (or `chamber_id=1|2`)
   Applies a grow profile to a single chamber (soil thresholds + linked light schedule/auto + preset fan/pump automation defaults). Accepts legacy zero-based indexes (`0`/`1`) or chamber IDs (`1`/`2`, with `2` also accepted via `chamber=2`) and responds with both `chamber_idx` and `chamber_id` alongside the applied label and chamber metadata.  
   Protected by Basic Auth in STA mode.
+- `POST /api/reboot`  
+  Authenticated reboot endpoint that logs the requester, acknowledges the request with JSON, and then restarts the controller after a short delay so the response can reach the UI.
 
 ### 4.5 History API (`/api/history`)
 

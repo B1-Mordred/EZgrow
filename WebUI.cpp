@@ -358,6 +358,23 @@ static void handleStatusApi() {
   server.send(200, "application/json", json);
 }
 
+// ================= Reboot API =================
+
+static void handleRebootApi() {
+  if (!requireAuth()) return;
+
+  IPAddress remoteIp = server.client().remoteIP();
+  Serial.print("[AUDIT] Reboot requested from ");
+  Serial.println(remoteIp);
+
+  server.send(200, "application/json", "{\"ok\":true,\"message\":\"Rebooting now\"}");
+
+  delay(250);
+  Serial.println("[SYS] Rebooting after API request");
+  delay(250);
+  ESP.restart();
+}
+
 static bool parseNumericString(const String& raw) {
   if (raw.length() == 0) return false;
   for (size_t i = 0; i < raw.length(); i++) {
@@ -1135,6 +1152,10 @@ static void handleConfigGet() {
     page += ">" + htmlEscape(greenhouseTimezoneLabelAt(i)) + "</option>";
   }
   page += "</select><div class='small'>Applied immediately to NTP and time display.</div></div>";
+  page += "<div class='field'><label>Device reboot</label>";
+  page += "<p class='small'>Gracefully restarts the controller after confirming the request.</p>";
+  page += "<button type='button' class='btn danger' id='rebootBtn' data-confirm='Reboot the device now? Active sessions may disconnect.'>Reboot</button>";
+  page += "<div class='small'>Responds before restarting so the UI can show confirmation.</div></div>";
   page += "</div>";
   page += "</div>";
 
@@ -1422,6 +1443,7 @@ void initWebServer() {
   server.on("/api/grow/apply",   HTTP_GET,  handleApplyProfileChamberApi);
   server.on("/api/grow/apply_all", HTTP_POST, handleApplyProfileAllApi);
   server.on("/api/grow/apply_all", HTTP_GET,  handleApplyProfileAllApi);
+  server.on("/api/reboot",       HTTP_POST, handleRebootApi);
 
   server.on("/config",           HTTP_GET,  handleConfigGet);
   server.on("/config",           HTTP_POST, handleConfigPost);

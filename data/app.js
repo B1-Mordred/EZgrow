@@ -911,6 +911,36 @@
         }
       });
     });
+
+    const rebootBtn = $("#rebootBtn");
+    if (rebootBtn){
+      const confirmMsg = rebootBtn.dataset.confirm || "Reboot the device now?";
+      const idleLabel = rebootBtn.textContent;
+      rebootBtn.addEventListener("click", async () => {
+        if (!window.confirm(confirmMsg)) return;
+
+        rebootBtn.disabled = true;
+        rebootBtn.setAttribute("aria-busy", "true");
+        rebootBtn.textContent = "Rebooting…";
+        try{
+          const res = await fetch("/api/reboot", { method:"POST" });
+          if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+          let msg = "Rebooting…";
+          try{
+            const data = await res.json();
+            if (data && typeof data.message === "string" && data.message.trim()){
+              msg = data.message.trim();
+            }
+          }catch{}
+          toast(msg);
+        }catch(e){
+          toast(`Reboot failed: ${e.message}`);
+          rebootBtn.disabled = false;
+          rebootBtn.removeAttribute("aria-busy");
+          rebootBtn.textContent = idleLabel;
+        }
+      });
+    }
   }
 
   function initWifi(){

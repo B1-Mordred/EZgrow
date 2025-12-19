@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+- Fixed grow profile application from the Config UI to target Chamber 1 correctly when both chamber index and ID data attributes are present, ensuring the applied preset persists.
+- Simplified the top bar branding to show only the EZgrow logo without text for a cleaner header.
 - Added editable grow profile presets (labels, soil thresholds, light schedules, automation defaults) stored in NVS via the Config → Grow profile tab.
 - Surfaced applied grow profile labels per chamber on the dashboard by extending `/api/status` with `profile_id`/`profile_label` and rendering them alongside light controls.
 - Switched history logging to 10-minute samples with 7-day retention, averaging all readings per window, added 1–7 day range selection (with persistence) to `/api/history` and the dashboard charts, and based automation thresholds on 1-minute averaged sensor data.

@@ -113,8 +113,8 @@
   }
 
   function resolveChamberDataset(dataset){
-    return parseChamberDatasetValue(dataset?.chamberId, true)
-        || parseChamberDatasetValue(dataset?.chamber, false)
+    return parseChamberDatasetValue(dataset?.chamber, false)
+        || parseChamberDatasetValue(dataset?.chamberId, true)
         || { chamberIdx: 0, chamberId: 1, requestValue: 0 };
   }
 

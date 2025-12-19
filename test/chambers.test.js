@@ -139,7 +139,7 @@ test('config grow profile buttons call chamber endpoint and update banner', asyn
     "<div id='cfg-time'></div>" +
     "<div id='appliedProfileBanner' data-label=''></div>" +
     "<select id='prof-ch1'><option value='0'>Custom</option><option value='2' selected>Vegetative</option></select>" +
-    "<button class='apply-profile' data-chamber='0' type='button'>Apply</button>" +
+    "<button class='apply-profile' data-chamber='0' data-chamber-id='1' type='button'>Apply</button>" +
     "</body>",
     fetchMock
   );
@@ -179,7 +179,7 @@ test('config grow profile apply supports chamber id aliases', async () => {
     "<div id='cfg-time'></div>" +
     "<div id='appliedProfileBanner' data-label=''></div>" +
     "<select id='prof-ch2'><option value='0'>Custom</option><option value='1' selected>Seedling</option></select>" +
-    "<button class='apply-profile' data-chamber='1' data-chamber-id='2' type='button'>Apply</button>" +
+    "<button class='apply-profile' data-chamber-id='2' type='button'>Apply</button>" +
     "</body>",
     fetchMock
   );

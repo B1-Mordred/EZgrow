@@ -13,9 +13,9 @@ test('includes favicon link after title block', () => {
   assert.match(webUiSource, pattern);
 });
 
-test('renders brand with logo and text', () => {
+test('renders brand with logo only', () => {
   const pattern = new RegExp(
-    String.raw`page \+= "<div class='brand'><img src='\/logo-ezgrow\.png' class='brand-logo' alt='EZgrow logo'><span class='brand-text'>EZgrow<\/span><\/div>";`
+    String.raw`page \+= "<div class='brand'><img src='\/logo-ezgrow\.png' class='brand-logo' alt='EZgrow logo'><\/div>";`
   );
   assert.match(webUiSource, pattern);
 });
